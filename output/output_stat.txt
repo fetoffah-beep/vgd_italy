@@ -1,0 +1,10 @@
+Displacement Statistics:
+Total number of tiles with MPs in AOI = 72
+Total number of MPs = 7328741
+Total number of observations = 2213118122
+Total displacement = -5689464279.899996
+Mean: -2.5707910587069858 mm
+Minimum displacement: -352.7 mm
+Maximum displacement: 534.5 mm
+Minimum displacement occurs at: 4767450.0 E, 1645150.0 N
+Maximum displacement occurs at: 4670950.0 E, 1978750.0 N
