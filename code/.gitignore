@@ -1,0 +1,10 @@
+# Git ignore rules
+
+*.pyc
+__pycache__/
+.env
+
+data/
+docs/
+output/
+requirements.txt

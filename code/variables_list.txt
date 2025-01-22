@@ -1,0 +1,66 @@
+
+1. Directly Related to Groundwater
+ Rate of groundwater extraction
+ Soil type and properties
+ Sediment thickness and properties
+ Compressibility
+ Surface water levels
+ Precipitation rates
+ Drainage systems
+ Temperature
+Groundwater recharge rates
+ Infiltration rates
+ Surface runoff
+ Subsurface water flow patterns
+ Soil moisture levels
+ Seasonal moisture variation
+ Karstification
+ Extent of saltwater intrusion into coastal aquifers
+ Soil and rock compressibility, consolidation characteristics
+ Drainage patterns, canal and dike systems
+ Soil infiltration capacity, percolation rates
+
+ 2. Indirectly Related to Groundwater
+ Stratigraphy
+ Urban development/population
+ Infrastructure weight
+ Mining activities
+ Land reclamation
+ Construction and extraction activities
+ Land cover changes
+ Root systems
+ Changes in land use
+ Ground ice content
+ Changes in water table depth over time
+ Sediment deposition and erosion rates
+ Historical subsidence rates
+ Previous subsidence events
+ Rates of crustal deformation and uplift
+ Floodplain dynamics
+ Sediment transport
+ Vibrations from construction
+ Industrial activities
+
+ 3. Not Directly Related to Groundwater
+ Seismic activity
+ Fault movements
+ Tectonic stress fields
+ Temperature changes
+ Permafrost extent
+ Surface deformation measurements
+ Coastal erosion
+ Traffic
+ Extreme weather events
+ Population density, urbanization rate
+ Proximity to fault lines
+ Seismic activity frequency and intensity
+ Type and extent of industrial activities
+ Cooling and contraction of the Earth's crust
+ Organic carbon density
+
+ 4. Variables with Overlapping Categories
+ Weight and distribution of buildings and infrastructure
+ Extent and methods of land reclamation
+ Depth and extent of mining, type of extracted material
+ Slope gradient
+ Tidal influences
