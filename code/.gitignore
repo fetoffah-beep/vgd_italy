@@ -4,8 +4,14 @@
 __pycache__/
 .env
 
+aoi/*.zip
 data/
 docs/
 output/
 requirements.txt
 README.md
+src/data/data_exploration.py
+src/features/
+src/utils/logger.py
+eda.ipynb
+
