@@ -4,7 +4,7 @@ import torch.nn as nn
 from src.models import VGDModel  # Import the model class
 
 def train_model(
-    model, train_loader, val_loader, num_epochs=20, learning_rate=0.001, 
+    model, train_loader, val_loader, optimizer, start_epoch=0, num_epochs=20, learning_rate=0.001, 
     checkpoint_path=None, grad_clip=None, device=None
 ):
     """
@@ -14,6 +14,8 @@ def train_model(
         model (VGDModel): The model to be trained.
         train_loader (DataLoader): The DataLoader for the training data.
         val_loader (DataLoader): The DataLoader for the validation data.
+        optimizer (torch.optim.Optimizer): The optimizer for training.
+        start_epoch (int): The epoch to resume training from.
         num_epochs (int): The number of training epochs.
         learning_rate (float): The learning rate for the optimizer.
         checkpoint_path (str, optional): Path to save the model checkpoint.
@@ -26,26 +28,24 @@ def train_model(
     model.to(device)
 
     # Loss function (Mean Squared Error for regression)
-    criterion = nn.MSELoss()
+    loss_fun = nn.MSELoss()
 
-    # Optimizer (Adam optimizer)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    for epoch in range(num_epochs):
+    
+    for epoch in range(start_epoch, num_epochs):
         model.train()  # Set the model to training mode
-        running_loss = 0.0
+        training_loss = 0.0
 
         for inputs, targets in train_loader:
             # Move data to the same device as the model
             inputs, targets = inputs.to(device), targets.to(device)
 
-            optimizer.zero_grad()  # Zero the gradients
+            optimizer.zero_grad() 
 
             # Forward pass
             outputs = model(inputs)
 
             # Calculate the loss
-            loss = criterion(outputs, targets)
+            loss = loss_fun(outputs, targets)
 
             # Backward pass and optimization
             loss.backward()
@@ -56,7 +56,7 @@ def train_model(
 
             optimizer.step()
 
-            running_loss += loss.item()
+            training_loss += loss.item()
 
         # Validation phase
         model.eval()  # Set the model to evaluation mode
@@ -65,17 +65,17 @@ def train_model(
             for inputs, targets in val_loader:
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, targets)
+                loss = loss_fun(outputs, targets)
                 val_loss += loss.item()
 
         # Normalize losses
-        running_loss /= len(train_loader)
+        training_loss /= len(train_loader)
         val_loss /= len(val_loader)
 
         # Print loss for each epoch
         print(
             f"Epoch [{epoch + 1}/{num_epochs}], "
-            f"Training Loss: {running_loss:.4f}, Validation Loss: {val_loss:.4f}"
+            f"Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}"
         )
 
         # Save checkpoint at the end of every epoch if specified

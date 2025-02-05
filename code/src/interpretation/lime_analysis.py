@@ -5,104 +5,72 @@ Purpose: LIME-based explanation of model predictions.
 Content:
 - Implement LIME for interpretability.
 """
-
 import lime
 import lime.lime_tabular
-import numpy as np
-import matplotlib.pyplot as plt
+import torch
+import pandas as pd
+from tqdm import tqdm  # For progress tracking
+import os
 
-def explain_prediction_with_lime(model, data, instance, feature_names=None, class_names=None, num_features=10):
+def compute_lime(model, data_loader, device, dataset_name, chunk_size=100, output_dir="../../output"):
     """
     Explain a single prediction using LIME (Local Interpretable Model-Agnostic Explanations).
     
     Args:
-        model: The trained model to explain predictions for.
-        data: The training dataset (or a subset of it) to build local explanations.
-        instance: The instance (data point) to explain.
-        feature_names (list of str, optional): List of feature names.
-        class_names (list of str, optional): List of class names for classification tasks.
-        num_features (int, optional): Number of features to display in the explanation.
-    
+        model: Trained VGDModel model.
+        data_loader: DataLoader for train, validation, or test set.
+        device: Computation device (CPU or GPU).
+        dataset_name: Name of the dataset split (Train, Validation, Test).
+        chunk_size: Number of samples to process per batch.
+        output_dir: Directory to store output CSV files.
+
     Returns:
-        explanation: LIME explanation object.
+        Saves feature importance results to CSV incrementally.
     """
-    # Initialize the LIME explainer
+    model.eval()
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    output_csv = os.path.join(output_dir, f"lime_{dataset_name.lower()}.csv")
+
+    feature_importances = []
+
+    # Extract all data from the loader
+    all_inputs = []
+    for inputs, _ in data_loader:
+        all_inputs.append(inputs)
+    
+    all_inputs = torch.cat(all_inputs).cpu().numpy()
+    feature_names = [f"Feature_{i}" for i in range(all_inputs.shape[1])]
+
+    # Initialize LIME Explainer
     explainer = lime.lime_tabular.LimeTabularExplainer(
-        training_data=data,
+        training_data=all_inputs,
         feature_names=feature_names,
-        class_names=class_names,
-        mode='regression' if len(np.unique(instance)) > 1 else 'classification',
+        mode="regression",
         discretize_continuous=True
     )
 
-    # Explain the prediction for the given instance
-    explanation = explainer.explain_instance(
-        instance, model.predict, num_features=num_features
-    )
+    # Process in chunks
+    for start_idx in tqdm(range(0, len(all_inputs), chunk_size), desc=f"Processing {dataset_name} data"):
+        end_idx = min(start_idx + chunk_size, len(all_inputs))
+        batch_inputs = all_inputs[start_idx:end_idx]
 
-    return explanation
+        for i, instance in enumerate(batch_inputs):
+            def model_predict_fn(x):
+                x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+                with torch.no_grad():
+                    return model(x_tensor).cpu().numpy()
 
+            # Generate LIME explanation
+            explanation = explainer.explain_instance(instance, model_predict_fn)
+            importance = {feat: val for feat, val in explanation.as_list()}
+            importance["Dataset"] = dataset_name
+            feature_importances.append(importance)
 
-def plot_lime_explanation(explanation):
-    """
-    Plot the LIME explanation.
-    
-    Args:
-        explanation: The LIME explanation object.
-    """
-    explanation.show_in_notebook(show_table=True, show_all=False)
-
-
-def plot_lime_bar_chart(explanation):
-    """
-    Plot the LIME explanation as a bar chart.
-    
-    Args:
-        explanation: The LIME explanation object.
-    """
-    explanation.as_pyplot_figure()
-    plt.show()
-
-
-def get_lime_explanation(explanation):
-    """
-    Get the raw LIME explanation data as a dictionary.
-    
-    Args:
-        explanation: The LIME explanation object.
-    
-    Returns:
-        dict: A dictionary containing the LIME explanation.
-    """
-    return explanation.as_map()
-
-
-
-import numpy as np
-from lime_interpretation import explain_prediction_with_lime, plot_lime_explanation, plot_lime_bar_chart
-from sklearn.ensemble import RandomForestRegressor
-
-# Example dataset (replace with your actual data)
-X_train = np.random.rand(100, 5)  # 100 samples, 5 features
-y_train = np.random.rand(100)  # Dummy target for regression
-
-# Train a RandomForestRegressor model (replace with your actual model)
-model = RandomForestRegressor()
-model.fit(X_train, y_train)
-
-# Choose an instance for explanation (e.g., first instance)
-instance = X_train[0]
-
-# Explain the prediction using LIME
-feature_names = [f"Feature_{i+1}" for i in range(X_train.shape[1])]
-explanation = explain_prediction_with_lime(model, X_train, instance, feature_names=feature_names)
-
-# Plot the LIME explanation
-plot_lime_explanation(explanation)
-
-# Plot LIME explanation as a bar chart
-plot_lime_bar_chart(explanation)
-
-# Get raw explanation data
-lime_data = get_lime_explanation(explanation)
-print(lime_data)
+        # Save results incrementally to CSV
+        df = pd.DataFrame(feature_importances)
+        df.to_csv(output_csv, mode='a', header=not os.path.exists(output_csv), index=False)
+        feature_importances = []  
+        
+    print(f"LIME feature importances saved to {output_csv}")

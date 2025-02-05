@@ -29,8 +29,13 @@ class VGDModel(nn.Module):
                             hidden_size=hidden_size, 
                             num_layers=num_layers, 
                             batch_first=True,  
-                            dropout=dropout)
+                            dropout=dropout,
+                            bidirectional = False # Change to true for bidirectional LSTM
+                            )
         
+      
+
+
         # Fully connected layer to map LSTM output to the target
         self.fc = nn.Linear(hidden_size, output_size)
 
