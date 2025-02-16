@@ -1,16 +1,18 @@
-from sklearn.ensemble import RandomForestClassifier
-from src.features.feature_engineering import create_features
-from src.models.checkpoint import save_checkpoint, load_checkpoint
-from src.data.dataloader import get_dataloader
-import torch
-import torch.optim as optim
+
 import torch.nn as nn
 
 
 class VGDModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_layers=2, dropout=0.2):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=3, dropout=0.2):
         """
         Initialize the LSTM-based model for predicting VGD.
+        
+        source:
+            https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+            https://machinelearningmastery.com/lstms-with-python/
+            https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html
+            
+            https://machinelearningmastery.com/faq/single-faq/what-is-the-difference-between-samples-timesteps-and-features-for-lstm-input/
         
         Args:
             input_size (int): The number of features in the input data.
@@ -33,7 +35,7 @@ class VGDModel(nn.Module):
                             bidirectional = False # Change to true for bidirectional LSTM
                             )
         
-      
+
 
 
         # Fully connected layer to map LSTM output to the target
@@ -49,6 +51,7 @@ class VGDModel(nn.Module):
         Returns:
             Tensor: Output tensor of shape (batch_size, output_size).
         """
+        print(f"Input shape: {x.shape}")
         # Pass through the LSTM layer
         lstm_out, _ = self.lstm(x)  
         

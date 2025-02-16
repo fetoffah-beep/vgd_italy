@@ -1,10 +1,10 @@
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from src.models import VGDModel  # Import the model class
+
 
 def train_model(
-    model, train_loader, val_loader, optimizer, start_epoch=0, num_epochs=20, learning_rate=0.001, 
+    model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, 
     checkpoint_path=None, grad_clip=None, device=None
 ):
     """
@@ -91,4 +91,4 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
-    print(f"Checkpoint saved at epoch {epoch + 1} to {checkpoint_path}")
+    # print(f"Checkpoint saved at epoch {epoch + 1} to {checkpoint_path}")
