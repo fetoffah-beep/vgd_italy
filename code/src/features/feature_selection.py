@@ -8,7 +8,6 @@ Content:
 """
 
 import numpy as np
-import torch
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import SelectKBest, f_regression
@@ -69,19 +68,25 @@ def apply_pca(features, n_components=2):
     return reduced_features, explained_variance
 
 
-def feature_selection_pipeline(features, targets, num_features=5, method="kbest"):
+def feature_selection_pipeline(features, targets, num_features=5, method="kbest", use_pca=False, n_components=2):
     """
-    Perform feature selection using the specified method.
+    Perform feature selection using the specified method and optionally apply PCA.
 
     Args:
         features (numpy.ndarray): Input feature matrix (n_samples, n_features).
         targets (numpy.ndarray): Target variable (n_samples,).
         num_features (int): Number of features to select.
         method (str): Feature selection method ("kbest" or "random_forest").
+        use_pca (bool): Whether to apply PCA before feature selection.
+        n_components (int): Number of principal components to retain if PCA is applied.
 
     Returns:
         numpy.ndarray: Reduced feature matrix with selected features.
     """
+    if use_pca:
+        # Apply PCA before feature selection
+        features, _ = apply_pca(features, n_components=n_components)
+
     if method == "kbest":
         selected_indices = select_important_features(features, targets, num_features)
     elif method == "random_forest":
@@ -90,18 +95,3 @@ def feature_selection_pipeline(features, targets, num_features=5, method="kbest"
         raise ValueError(f"Unsupported method: {method}")
 
     return features[:, selected_indices]
-
-
-# Simulated data
-np.random.seed(42)
-features = np.random.rand(100, 10)  # 100 samples, 10 features
-targets = np.random.rand(100)       # Continuous target variable
-
-# Feature selection
-selected_features = feature_selection_pipeline(features, targets, num_features=3, method="kbest")
-print("Selected Features (KBest):", selected_features.shape)
-
-# Dimensionality reduction using PCA
-reduced_features, explained_variance = apply_pca(features, n_components=3)
-print("Reduced Features (PCA):", reduced_features.shape)
-print("Explained Variance Ratio (PCA):", explained_variance)

@@ -5,9 +5,10 @@ Purpose: SHAP-based interpretation of model predictions.
 Content:
 - Functions to calculate and plot SHAP values.
 """
-import shap
 import torch
+import shap
 import numpy as np
+
 
 def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"):
     """
@@ -20,26 +21,25 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
     - dataset_name: Name of the dataset.
     - explainer_type: Type of SHAP explainer ('gradient', 'kernel', 'deep', 'tree', or 'auto').
     """
-
     model.eval()  # Ensure model is in evaluation mode
-    
-    # Select a batch of data for SHAP analysis
-    for inputs, targets in data_loader:
-        inputs = inputs.to(device)
-        break  # Take only the first batch
 
     # Dynamically choose SHAP explainer
     explainer = None
-    
+
+    # Select a batch of data for SHAP analysis (using the first batch for model input)
+    for inputs, targets in data_loader:
+        inputs = inputs.to(device)
+        break  # Take only the first batch for input reference
+
     if explainer_type == "auto":
-        if isinstance(model, torch.nn.Module):  
-            explainer = shap.GradientExplainer(model, inputs)
-        else:
-            explainer = shap.KernelExplainer(model, inputs.cpu().numpy()) 
+        explainer = shap.GradientExplainer(model, inputs)
     elif explainer_type == "gradient":
         explainer = shap.GradientExplainer(model, inputs)
     elif explainer_type == "kernel":
-        explainer = shap.KernelExplainer(model, inputs.cpu().numpy())
+        explainer = shap.KernelExplainer(
+            lambda x: model(torch.tensor(x, dtype=torch.float32, device=device)).cpu().detach().numpy(),
+            inputs.cpu().numpy()
+        )
     elif explainer_type == "deep":
         explainer = shap.DeepExplainer(model, inputs)
     elif explainer_type == "tree":
@@ -49,19 +49,33 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 
     print(f"Using {explainer.__class__.__name__} for {dataset_name}")
 
-    # Compute SHAP values
-    shap_values = explainer.shap_values(inputs)
-    
-    # Convert inputs to NumPy for plotting
+    # Initialize list to store all SHAP values
+    all_shap_values = []
+
+    # Iterate over all data in the data_loader
+    for inputs, targets in data_loader:
+        inputs = inputs.to(device)
+
+        shap_values = explainer.shap_values(inputs)
+
+        shap_values = np.array(shap_values)
+        if shap_values.ndim == 1:  
+            shap_values = shap_values.reshape(-1, 1)
+
+        all_shap_values.append(shap_values)
+
+    all_shap_values = np.concatenate(all_shap_values, axis=0)
+
     inputs_np = inputs.cpu().numpy()
+    if inputs_np.ndim == 1:
+        inputs_np = inputs_np.reshape(-1, 1)
 
-    # Plot SHAP summary
-    shap.summary_plot(shap_values, inputs_np, title=f"SHAP Summary for {dataset_name} with {explainer_type}")
+    shap.summary_plot(all_shap_values, inputs_np, title=f"SHAP Summary for {dataset_name} with {explainer_type}")
 
-    # Save SHAP values
-    np.save(f"shap_values_{dataset_name}.npy", shap_values)
+    np.save(f"shap_values_{dataset_name}.npy", all_shap_values)
 
     print(f"SHAP analysis completed for {dataset_name} using {explainer.__class__.__name__}")
+
 
 # That’s a great idea! To analyze **feature importance for each EGMS measurement point** and **visualize it spatially**, here’s the approach:
 

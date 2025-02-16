@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import torch
 
-def visualize_results(model, data_loader, device, num_samples=100):
+def visualize_results(model, data_loader, device):
     """
     Visualizes the results of the trained model.
 
@@ -26,15 +26,10 @@ def visualize_results(model, data_loader, device, num_samples=100):
             predictions.extend(outputs.cpu().numpy().tolist())
             ground_truth.extend(targets.cpu().numpy().tolist())
 
-            # Stop collecting after the specified number of samples
-            if len(predictions) >= num_samples:
-                break
 
-    # Ensure we only plot the desired number of samples
-    predictions = predictions[:num_samples]
-    ground_truth = ground_truth[:num_samples]
-
-    # Plotting
+    predictions = predictions[:len(data_loader.dataset)]
+    ground_truth = ground_truth[:len(data_loader.dataset)]
+    
     plt.figure(figsize=(12, 6))
     plt.plot(ground_truth, label="Ground Truth", marker="x", linestyle="-", alpha=0.7, color='blue')
     plt.plot(predictions, label="Predictions", marker="o", linestyle="--", alpha=0.7, color='red')

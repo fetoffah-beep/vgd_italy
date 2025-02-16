@@ -1,7 +1,6 @@
 
 import torch
 import os
-from model import VGDModel  
 
 
 # Function to load the model checkpoint (for resuming training)

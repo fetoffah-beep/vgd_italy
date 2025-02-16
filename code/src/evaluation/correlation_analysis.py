@@ -6,6 +6,7 @@ Created on Wed Oct 30 14:09:47 2024
 """
 import torch
 import numpy as np
+from scipy.stats import spearmanr
 
 def comp_corr(data_loaders, device, file_path="../../output/correlation_results.txt"):
     """
@@ -34,10 +35,12 @@ def comp_corr(data_loaders, device, file_path="../../output/correlation_results.
     num_features = all_features.shape[1]
     correlations = {}
 
+
     for i in range(num_features):
         feature = all_features[:, i]
-        corr = np.corrcoef(feature, all_targets)[0, 1]
+        corr, _ = spearmanr(feature, all_targets)
         correlations[f"Feature_{i}"] = corr
+        
 
     # Categorization bins
     categories = {
