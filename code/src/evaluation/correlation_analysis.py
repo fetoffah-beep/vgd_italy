@@ -23,7 +23,7 @@ def comp_corr(data_loaders, device, file_path="../../output/correlation_results.
 
     with torch.no_grad():
         for data_loader in data_loaders:
-            for inputs, targets in data_loader:
+            for inputs, targets, *_ in data_loader:
                 inputs, targets = inputs.to(device), targets.to(device)
                 all_features.append(inputs.cpu().numpy())
                 all_targets.append(targets.cpu().numpy())

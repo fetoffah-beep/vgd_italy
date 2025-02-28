@@ -7,6 +7,92 @@ from osgeo import gdal
 
 import xarray as xr
 import rioxarray
+import pandas as pd
+from shapely.wkt import loads
+import geopandas as gpd
+from shapely.geometry import box
+
+
+
+def get_predictors(data_paths, aoi_path):
+    """Get predictor datasets."""
+        
+    #######################################   for the aoi    #######################################
+    if aoi_path:
+        try:
+            if aoi_path.endswith(".shp") or aoi_path.endswith(".geojson"):
+                aoi_gdf = gpd.read_file(aoi_path)
+        
+            elif aoi_path.endswith(".wkt"):
+                with open(aoi_path, "r") as file:
+                    wkt_string = file.read().strip()
+                aoi_geometry = loads(wkt_string)
+                aoi_gdf = gpd.GeoDataFrame(geometry=[aoi_geometry], crs="EPSG:4326")
+                    
+            elif aoi_path.endswith(".txt"):
+                with open(aoi_path, "r") as file:
+                    line = file.readline().strip()
+                    min_lon, min_lat, max_lon, max_lat = map(float, line.split(","))
+            
+                aoi_geometry = box(min_lon, min_lat, max_lon, max_lat)
+                aoi_gdf = gpd.GeoDataFrame(geometry=[aoi_geometry], crs="EPSG:4326")
+            else:
+                raise ValueError("AOI file must be of type .shp, .geojson, .txt or .wkt")
+        except Exception as e:
+            raise ValueError(f"Error reading AOI from file: {e}")       
+    else:
+        raise ValueError("AOI file must be provided.")
+            
+    aoi_gdf = aoi_gdf.to_crs("EPSG:3035")
+        
+        
+        
+    #######################################   for the predictor    #######################################
+        
+    with xr.open_mfdataset(data_paths, engine = 'netcdf4') as ds:
+        pred_vars = [var for var in list(ds.data_vars) if var not in list(ds.coords)]
+        # pred_vars.append("time_numeric")
+        dataframe_from_ds = ds.to_dataframe().reset_index()
+            
+        # We're keeping the time information of the dataset so the model understands the actual time differences.
+
+        # # if "valid_time" in dataframe_from_ds.columns:
+        # dataframe_from_ds["time_numeric"] = pd.to_datetime(dataframe_from_ds["valid_time"]).astype(np.int64) // 10**9
+
+            
+        data_gdf = gpd.GeoDataFrame(dataframe_from_ds, 
+                                        geometry=gpd.points_from_xy(dataframe_from_ds.longitude, 
+                                                                    dataframe_from_ds.latitude), 
+                                        crs="EPSG:4326")
+        
+        data_gdf = data_gdf.to_crs("EPSG:3035")
+        data_gdf["longitude"] = data_gdf.geometry.x
+        data_gdf["latitude"] = data_gdf.geometry.y
+        
+        predictors = gpd.sjoin(data_gdf, aoi_gdf, how="inner", predicate="within")
+        
+        pred_mean = {var: data_gdf[var].mean() for var in pred_vars}
+        pred_std = {var: data_gdf[var].std() for var in pred_vars}
+
+        
+    return data_gdf, pred_vars, pred_mean, pred_std
+    
+    
+
+
+def get_target():            
+    #######################################   for the target    #######################################
+    target_displacement = pd.concat(pd.read_csv("C:/Users/39351/Desktop/sapienza/DNOT/topic/vgd_italy/code/data/processed/New folder/trial.csv", chunksize=1000))        
+    target_times = target_displacement.columns[2:]
+    return target_displacement, target_times
+
+
+
+
+
+
+
+
 
 def tif2dataset(tif_path):
     """
