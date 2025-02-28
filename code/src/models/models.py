@@ -21,7 +21,7 @@ class VGDModel(nn.Module):
             num_layers (int): The number of LSTM layers.
             dropout (float): Dropout rate for regularization between LSTM layers.
         """
-        super(VGDModel, self).__init__()
+        super().__init__()
         
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -55,8 +55,9 @@ class VGDModel(nn.Module):
         # Pass through the LSTM layer
         lstm_out, _ = self.lstm(x)  
         
-        # Use the last hidden state for prediction
-        last_hidden_state = lstm_out[:, -1, :] 
+        # # Use the all hidden state for prediction (sequence-to-sequence)
+        # last_hidden_state = lstm_out[:, :, :] 
+         
         
         # Pass through the fully connected layer
         out = self.fc(last_hidden_state) 
