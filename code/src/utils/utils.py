@@ -49,10 +49,25 @@ def get_predictors(data_paths, aoi_path):
         
     #######################################   for the predictor    #######################################
         
-    with xr.open_mfdataset(data_paths, engine = 'netcdf4') as ds:
+    with xr.open_mfdataset(data_paths, engine = 'netcdf4', chunks=1000) as ds:
+        print(ds)
         pred_vars = [var for var in list(ds.data_vars) if var not in list(ds.coords)]
         # pred_vars.append("time_numeric")
         dataframe_from_ds = ds.to_dataframe().reset_index()
+        
+        if 'latitude' in dataframe_from_ds.columns:
+            dataframe_from_ds['latitude'] = dataframe_from_ds['latitude']
+        elif 'lat' in dataframe_from_ds.columns:
+            dataframe_from_ds['latitude'] = dataframe_from_ds['lat']
+            dataframe_from_ds.drop('lat', axis=1, inplace=True)
+
+        if 'longitude' in dataframe_from_ds.columns:
+            dataframe_from_ds['longitude'] = dataframe_from_ds['longitude']
+        elif 'lon' in dataframe_from_ds.columns:
+            dataframe_from_ds['longitude'] = dataframe_from_ds['lon']
+            dataframe_from_ds.drop('lon', axis=1, inplace=True)
+            
+            
             
         # We're keeping the time information of the dataset so the model understands the actual time differences.
 

@@ -35,14 +35,14 @@ def train_model(
         model.train()  # Set the model to training mode
         training_loss = 0.0
 
-        for inputs, targets in train_loader:
+        for dyn_inputs, static_input, targets in train_loader:
             # Move data to the same device as the model
-            inputs, targets = inputs.to(device), targets.to(device)
+            dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
 
             optimizer.zero_grad() 
 
             # Forward pass
-            outputs = model(inputs)
+            outputs = model(dyn_inputs, static_input)
 
             # Calculate the loss
             loss = loss_fun(outputs, targets)
@@ -62,9 +62,9 @@ def train_model(
         model.eval()  # Set the model to evaluation mode
         val_loss = 0.0
         with torch.no_grad():
-            for inputs, targets in val_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)
+            for dyn_inputs, static_input, targets in val_loader:
+                dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+                outputs = model(dyn_inputs, static_input)
                 loss = loss_fun(outputs, targets)
                 val_loss += loss.item()
 

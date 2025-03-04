@@ -19,7 +19,7 @@ Source:
 """
 import torch
 import torch.nn as nn
-from convlstm import ConvLSTM
+from .convlstm import ConvLSTM
 import torch.nn.functional as F
 
 
@@ -66,15 +66,15 @@ class VGDModel(nn.Module):
         self.seq_model = nn.Sequential(
             nn.Conv2d(in_channels=input_size, out_channels=16, kernel_size=3, padding=1),
             nn.BatchNorm2d(16),
-            F.relu(),
+            nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
-            F.relu(),
+            nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Conv2d(32, 64, kernel_size=5, padding=1),
             nn.BatchNorm2d(64),
-            F.relu(),
+            nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 4)),
         )
         
@@ -111,9 +111,11 @@ class VGDModel(nn.Module):
             
         """
         
+        timef  = dynamic_input.shape[1]
+        
         ################# ConvLSTM for Dynamic features #################
         dynamic_out, _ = self.dynamic_model(dynamic_input)
-        dynamic_out = torch.flatten(dynamic_out, start_dim=2)  # flatten all dimensions except batch and time_step
+        dynamic_out = torch.flatten(dynamic_out[-1], start_dim=2)  # flatten all dimensions except batch and time_step
         
         
         
@@ -124,7 +126,7 @@ class VGDModel(nn.Module):
         x_cnn = self.fc_cnn(x_cnn)
     
         x_cnn = x_cnn.unsqueeze(1)
-        static_out = x_cnn.repeat(1, dynamic_out.shape[1], 1)
+        static_out = x_cnn.repeat(1, timef, 1)
         
         
         # Non-empty tensors provided for concatenation must have the same shape, except in the cat dimension.

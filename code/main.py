@@ -14,10 +14,10 @@ import numpy as np
 import xarray as xr
 import geopandas as gpd
 # from src.models.models import VGDModel
-from src.models.cnn_lstm import VGDModel
+from src.models.hybrid_model import VGDModel
 from src.data.dataloader import VGDDataLoader
 # from src.data.base_dataset import VGDDataset
-from src.data.cnnlstm_base_dataset import VGDDataset
+from src.data.hybrid_dataset import VGDDataset
 from src.data.merge_datasets import merge_datasets
 from src.models.train_model import train_model
 from src.interpretation.shap_analysis import compute_shap
@@ -32,7 +32,6 @@ from src.features.feature_creation import create_features
 from src.features.feature_selection import feature_selection_pipeline 
 from src.utils.utils import get_target, get_predictors
 
-from torch.utils.data import Subset
 
 
 
@@ -66,15 +65,41 @@ aoi_path = "aoi/Emilia-Romagna.shp"
 
 # data_dir= 'data/raw/era5/New folder (2)/91668fe0cd4a8a6043f32b80b01d6447 (1)/*.nc'
 data_dir= 'data/raw/era5/test/*.nc'
-aoi_gdf = gpd.read_file(aoi_path).to_crs("EPSG:3035")
+static_dir= 'data/raw/soildepth3_o_European_01min.nc'
 
+# aoi_gdf = gpd.read_file(aoi_path).to_crs("EPSG:3035")
+
+
+# static_predictors, static_vars, static_mean, static_std = get_predictors(static_dir, aoi_path)
+
+# print(static_vars, static_mean, static_std)
 
     
 target_displacement, target_times = get_target()
 
 predictors, pred_vars, pred_mean, pred_std = get_predictors(data_dir, aoi_path)
-print(type(pred_mean), pred_mean)  
-print(type(pred_std), pred_std)
+
+static_predictors = predictors.loc[predictors["valid_time"] == predictors["valid_time"].min()]
+static_vars = pred_vars
+static_mean = pred_mean
+static_std = pred_std
+
+
+
+     
+train_ratio, val_ratio, test_ratio = 0.7, 0.2, 0.1
+num_points, _ = target_displacement.shape
+
+train_end_idx = int(train_ratio * num_points)
+val_end_idx = int((train_ratio + val_ratio) * num_points)
+        
+target_data = target_displacement[:train_end_idx]
+val_data = target_displacement[train_end_idx:val_end_idx]
+test_data = target_displacement[val_end_idx:]
+
+
+
+
 
 
 def main():
@@ -102,23 +127,10 @@ def main():
     
     
     
-    input_size = len(variables_list)+1  # Number of input features. time is added to the dataset as a feature to enable the model learn with time
+    input_size = len(variables_list)  # Number of input features. time is added to the dataset as a feature to enable the model learn with time
     # input_size = len(selected_features) 
 
     
-    # # Define transformations
-    # time_feature_index = pred_vars.index("time_numeric")
-    # transform = Compose([
-    #         NormalizeTransform(pred_mean, pred_std, time_feature_index), 
-    #         ReshapeTransformCNN(input_size, H, W, seq_len=seq_len)
-    #     ])
-    
-    # target_transform = Compose([
-    #         LogTransform()
-    #     ])
-    
-    
-
 
     
     # Define the split ratios for train, validation, and test
@@ -130,9 +142,11 @@ def main():
     # test_dataset = VGDDataset(data_dir, aoi_path, test_split, transform=transform, target_transform=target_transform, device=device)
     
     # Initialize the dataset for train, val, and test splits
-    train_dataset = VGDDataset(data_dir, aoi_path, train_split, target_displacement, target_times, predictors, pred_vars, pred_mean, pred_std, device=device, seq_len=seq_len)
-    val_dataset = VGDDataset(data_dir, aoi_path, val_split, target_displacement, target_times, predictors, pred_vars, pred_mean, pred_std, device=device, seq_len=seq_len)
-    test_dataset = VGDDataset(data_dir, aoi_path, test_split, target_displacement, target_times, predictors, pred_vars, pred_mean, pred_std, device=device, seq_len=seq_len)
+    
+        
+    train_dataset = VGDDataset(train_split, target_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
+    val_dataset = VGDDataset(val_split, val_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
+    test_dataset = VGDDataset(test_split, test_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
     
     
     
@@ -145,11 +159,12 @@ def main():
 
 
     # Get the data loaders for train, validation, and test sets
-    train_loader, val_loader, test_loader = train_loader.train_loader, val_loader.val_loader, test_loader.test_loader
-
-    train_loader = next(iter(train_loader))
-    val_loader = next(iter(val_loader))
-    test_loader = next(iter(test_loader))
+    train_loader, val_loader, test_loader = train_loader.data_loader, val_loader.data_loader, test_loader.data_loader
+    # train_loader = train_loader.data_loader
+    
+    # train_loader = next(iter(train_loader))
+    # val_loader = next(iter(val_loader))
+    # test_loader = next(iter(test_loader))
     
 
     
@@ -158,12 +173,13 @@ def main():
 
     
     # Compute correlations
-    # comp_corr([train_loader], device)
+    comp_corr([train_loader, val_loader, test_loader], device)
 
 
 
     # Initialize the model
-    model = VGDModel(input_size, hidden_size, output_size, seq_len, train_dataset.H, train_dataset.W).to(device)
+    model = VGDModel(input_size, hidden_size, output_size)
+
 
     # Load checkpoint or initialize training
     model, optimizer, start_epoch = load_checkpoint(checkpoint_path, model, learning_rate, optimizer)
@@ -172,7 +188,7 @@ def main():
     # Train the model
     train_model(
         model, 
-        train_loader, 
+        train_loader,
         val_loader, 
         optimizer,
         learning_rate, 
