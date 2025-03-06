@@ -106,7 +106,7 @@ def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
     hidden_size = 128
-    num_epochs = 50
+    num_epochs = 5
     learning_rate = 0.0001
     optimizer = None
     batch_size=32
@@ -173,7 +173,7 @@ def main():
 
     
     # Compute correlations
-    comp_corr([train_loader, val_loader, test_loader], device)
+    # comp_corr([train_loader, val_loader, test_loader], device)
 
 
 
