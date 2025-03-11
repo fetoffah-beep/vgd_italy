@@ -1,6 +1,8 @@
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import matplotlib.pyplot as plt
+from torchinfo import summary
 
 
 def train_model(
@@ -29,6 +31,12 @@ def train_model(
 
     # Loss function (Mean Squared Error for regression)
     loss_fun = nn.MSELoss()
+    
+    training_losses = []  
+    validation_losses = []
+
+
+
 
     
     for epoch in range(start_epoch, num_epochs):
@@ -53,10 +61,13 @@ def train_model(
             # Gradient clipping (if specified)
             if grad_clip is not None:
                 nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1) 
 
             optimizer.step()
 
             training_loss += loss.item()
+
 
         # Validation phase
         model.eval()  # Set the model to evaluation mode
@@ -71,6 +82,9 @@ def train_model(
         # Normalize losses
         training_loss /= len(train_loader)
         val_loss /= len(val_loader)
+        
+        training_losses.append(training_loss)
+        validation_losses.append(val_loss)
 
         # Print loss for each epoch
         print(
@@ -82,6 +96,11 @@ def train_model(
         if checkpoint_path:
             save_checkpoint(model, optimizer, epoch, checkpoint_path)
 
+    plot_losses(training_losses, validation_losses)
+    
+    # print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
+
+
 
 def save_checkpoint(model, optimizer, epoch, checkpoint_path):
     """Function to save model and optimizer state as a checkpoint."""
@@ -92,3 +111,17 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
     }
     torch.save(checkpoint, checkpoint_path)
     # print(f"Checkpoint saved at epoch {epoch + 1} to {checkpoint_path}")
+
+
+def plot_losses(training_losses, validation_losses):
+    """Function to plot training and validation losses."""
+    epochs = range(1, len(training_losses) + 1)
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, training_losses, label='Training Loss', marker='o')
+    plt.plot(epochs, validation_losses, label='Validation Loss', marker='*')
+    plt.title('Learning Curve Graph')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()

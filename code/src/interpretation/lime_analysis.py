@@ -11,8 +11,9 @@ import torch
 import pandas as pd
 from tqdm import tqdm  # For progress tracking
 import os
+import numpy as np
 
-def compute_lime(model, data_loader, device, dataset_name, chunk_size=100, output_dir="../../output"):
+def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_name, chunk_size=100, output_dir="../../output"):
     """
     Explain a single prediction using LIME (Local Interpretable Model-Agnostic Explanations).
     
@@ -36,12 +37,24 @@ def compute_lime(model, data_loader, device, dataset_name, chunk_size=100, outpu
     feature_importances = []
 
     # Extract all data from the loader
-    all_inputs = []
-    for inputs, _ in data_loader:
-        all_inputs.append(inputs)
+    all_dyn_inputs, all_static_inputs = [], []
+    for dyn_inputs, static_input, _ in data_loader:
+        all_dyn_inputs.append(dyn_inputs.cpu().numpy())
+        all_static_inputs.append(static_input.cpu().numpy())
+
+    # Convert to NumPy arrays
+    all_dyn_inputs = np.concatenate(all_dyn_inputs, axis=0) 
+    all_static_inputs = np.concatenate(all_static_inputs, axis=0) 
     
-    all_inputs = torch.cat(all_inputs).cpu().numpy()
-    feature_names = [f"Feature_{i}" for i in range(all_inputs.shape[1])]
+    
+    flattened_dyn_inputs = all_dyn_inputs.reshape(all_dyn_inputs.shape[0], -1)  # Shape: (5, 15 * 3 * 5 * 5)
+
+    # Flatten the static inputs (num_static_vars, height, width)
+    flattened_static_inputs = all_static_inputs.reshape(all_static_inputs.shape[0], -1)  # Shape: (5, 3 * 5 * 5)
+
+    all_inputs = np.concatenate([flattened_dyn_inputs, flattened_static_inputs], axis=1)  # Shape: (5, 15*3*5*5 + 3*5*5)
+
+    feature_names = pred_vars + static_vars
 
     # Initialize LIME Explainer
     explainer = lime.lime_tabular.LimeTabularExplainer(
@@ -50,6 +63,8 @@ def compute_lime(model, data_loader, device, dataset_name, chunk_size=100, outpu
         mode="regression",
         discretize_continuous=True
     )
+    
+
 
     # Process in chunks
     for start_idx in tqdm(range(0, len(all_inputs), chunk_size), desc=f"Processing {dataset_name} data"):

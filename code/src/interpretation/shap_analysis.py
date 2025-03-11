@@ -9,8 +9,10 @@ import torch
 import shap
 import numpy as np
 
+import matplotlib.pyplot as plt
 
-def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"):
+
+def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_name, explainer_type="deep"):
     """
     Compute and visualize SHAP values using different explainers.
 
@@ -21,60 +23,71 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
     - dataset_name: Name of the dataset.
     - explainer_type: Type of SHAP explainer ('gradient', 'kernel', 'deep', 'tree', or 'auto').
     """
-    model.eval()  # Ensure model is in evaluation mode
-
-    # Dynamically choose SHAP explainer
-    explainer = None
-
+    model.to(device)
+    model.eval()  
+    
     # Select a batch of data for SHAP analysis (using the first batch for model input)
-    for inputs, targets in data_loader:
-        inputs = inputs.to(device)
-        break  # Take only the first batch for input reference
 
-    if explainer_type == "auto":
-        explainer = shap.GradientExplainer(model, inputs)
-    elif explainer_type == "gradient":
-        explainer = shap.GradientExplainer(model, inputs)
-    elif explainer_type == "kernel":
-        explainer = shap.KernelExplainer(
-            lambda x: model(torch.tensor(x, dtype=torch.float32, device=device)).cpu().detach().numpy(),
-            inputs.cpu().numpy()
-        )
-    elif explainer_type == "deep":
-        explainer = shap.DeepExplainer(model, inputs)
-    elif explainer_type == "tree":
-        explainer = shap.TreeExplainer(model)
-    else:
-        raise ValueError(f"Unknown explainer type: {explainer_type}")
+    for dyn_inputs, static_input, targets in data_loader:
+        dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)       
+        break
 
-    print(f"Using {explainer.__class__.__name__} for {dataset_name}")
 
+    # Use DeepExplainer for the deep learning model
+    explainer = shap.DeepExplainer(model, [dyn_inputs, static_input])
     # Initialize list to store all SHAP values
     all_shap_values = []
+    
+    for dyn_inputs, static_input, targets in data_loader:
+        dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+         
+        shap_values = explainer.shap_values([dyn_inputs, static_input])
+        
+        dyn_shap_values_all = [np.array(shap_values[i][0]) for i in range(len(shap_values))]  # Dynamic inputs for all outputs
+        stat_shap_values_all = [np.array(shap_values[i][1]) for i in range(len(shap_values))]  # Static inputs for all outputs
+        
+        
+        dyn_shap_values_mean = np.mean(dyn_shap_values_all, axis=( 1, 2, 4, 5))  # Mean over height & width
+        stat_shap_values_mean = np.mean(stat_shap_values_all, axis=(1, 3, 4))  # Mean for static inputs
 
-    # Iterate over all data in the data_loader
-    for inputs, targets in data_loader:
-        inputs = inputs.to(device)
 
-        shap_values = explainer.shap_values(inputs)
+        features_shap=np.concatenate([dyn_shap_values_mean,stat_shap_values_mean], axis=1)
+        
+        all_shap_values.append(features_shap)
 
-        shap_values = np.array(shap_values)
-        if shap_values.ndim == 1:  
-            shap_values = shap_values.reshape(-1, 1)
 
-        all_shap_values.append(shap_values)
+        
+        
+        # len(shap_values)               → 10  (Number of output features)
+        # len(shap_values[0])            → 2   (Dynamic and static inputs)
+        # len(shap_values[0][0])         → 32  (Batch size)
+        # len(shap_values[0][0][0])      → 10  (Time steps)
+        # len(shap_values[0][0][0][0])   → 3   (Number of features for input)
+        # len(shap_values[0][0][0][0][0]) → 5  (Height)
+        # len(shap_values[0][0][0][0][0][0]) → 5  (Width)
+        
 
-    all_shap_values = np.concatenate(all_shap_values, axis=0)
 
-    inputs_np = inputs.cpu().numpy()
-    if inputs_np.ndim == 1:
-        inputs_np = inputs_np.reshape(-1, 1)
 
-    shap.summary_plot(all_shap_values, inputs_np, title=f"SHAP Summary for {dataset_name} with {explainer_type}")
+    # Convert list to numpy array
+    all_shap = np.concatenate(all_shap_values, axis=1)  # Transpose for SHAP format
+    
+    # Create feature names
+    feature_names = pred_vars + static_vars
+    # Plot summary
+    shap.summary_plot(all_shap, feature_names=feature_names, title=f"Global Feature Importance")
+    
+    
+    
 
-    np.save(f"shap_values_{dataset_name}.npy", all_shap_values)
 
-    print(f"SHAP analysis completed for {dataset_name} using {explainer.__class__.__name__}")
+
+
+# Visualize them to see which features are the most influential.
+# Analyze the magnitude and direction of each SHAP value to understand whether a feature is pushing the prediction higher or lower.
+# Summarize the global importance of each feature across all predictions.
+
+
 
 
 # That’s a great idea! To analyze **feature importance for each EGMS measurement point** and **visualize it spatially**, here’s the approach:
@@ -82,9 +95,9 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 # ---
 
 # ### **🔹 Workflow for Spatial Feature Importance Mapping**
-# 1. **Compute SHAP values** for each point in your dataset.  
-# 2. **Extract feature importance** per point.  
-# 3. **Aggregate feature importance spatially** (e.g., per region or grid cell).  
+# 1. **Compute SHAP values** for each point in your dataset. 
+# 2. **Extract feature importance** per point. 
+# 3. **Aggregate feature importance spatially** (e.g., per region or grid cell). 
 # 4. **Visualize feature importance on a map**.
 
 # ---
@@ -98,8 +111,8 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 # import numpy as np
 
 # # Assume X_test contains the test data (each row is a point, columns are features)
-# explainer = shap.Explainer(model, X_train)  # Use the model trained on EGMS data
-# shap_values = explainer(X_test)  # Compute SHAP values for test points
+# explainer = shap.Explainer(model, X_train) # Use the model trained on EGMS data
+# shap_values = explainer(X_test) # Compute SHAP values for test points
 # ```
 
 # ---
@@ -124,9 +137,9 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 
 # # Create a DataFrame linking SHAP values to coordinates
 # df_shap = pd.DataFrame({
-#     'longitude': lon_test,  # Longitudes of test points
-#     'latitude': lat_test,    # Latitudes of test points
-#     'importance': feature_importance  # Feature importance per location
+# 'longitude': lon_test, # Longitudes of test points
+# 'latitude': lat_test, # Latitudes of test points
+# 'importance': feature_importance # Feature importance per location
 # })
 # ```
 
@@ -137,7 +150,7 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 # #### **4️⃣ Plot Feature Importance on a Map**
 # Use **Folium (for interactive maps) or Matplotlib (for static heatmaps)**.
 
-# 🔹 **Interactive Map (Folium)**  
+# 🔹 **Interactive Map (Folium)** 
 # ```python
 # import folium
 # from folium.plugins import HeatMap
@@ -153,7 +166,7 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 # m
 # ```
 
-# 🔹 **Static Heatmap (Matplotlib & Basemap)**  
+# 🔹 **Static Heatmap (Matplotlib & Basemap)** 
 # ```python
 # import matplotlib.pyplot as plt
 # import geopandas as gpd
@@ -172,15 +185,15 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 
 # ### **🔹 Bonus: Feature-Specific Influence per Region**
 # If you want to **see which feature dominates in different regions**, you can:
-# 1. **Group by spatial regions (e.g., administrative boundaries or grid cells).**  
-# 2. **Find the most important feature in each region.**  
+# 1. **Group by spatial regions (e.g., administrative boundaries or grid cells).** 
+# 2. **Find the most important feature in each region.** 
 # 3. **Plot a categorical map showing the dominant feature per region.**
 
 # Example using `geopandas`:
 
 # ```python
 # # Group by a spatial region (e.g., provinces, using a shapefile)
-# regions = gpd.read_file("regions_shapefile.shp")  # Load spatial boundaries
+# regions = gpd.read_file("regions_shapefile.shp") # Load spatial boundaries
 # gdf_joined = gpd.sjoin(gdf, regions, how="left", predicate="intersects")
 
 # # Find the most important feature per region
@@ -193,17 +206,3 @@ def compute_shap(model, data_loader, device, dataset_name, explainer_type="auto"
 # plt.show()
 # ```
 
-# ---
-
-# ### **🚀 Summary**
-# ✔ Compute **SHAP values per EGMS measurement point**.  
-# ✔ Extract **feature importance per point**.  
-# ✔ Link to **spatial coordinates**.  
-# ✔ **Visualize importance** on an interactive **heatmap** or static **map**.  
-# ✔ Optionally, **analyze dominant features by region**.
-
-# ---
-
-# ### **💡 Next Steps**
-# - Do you want to **analyze different SHAP explainers** for comparison?  
-# - Should we **aggregate feature importance** over time as well? 🚀

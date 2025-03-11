@@ -31,7 +31,7 @@ from src.evaluation.correlation_analysis import comp_corr
 from src.features.feature_creation import create_features  
 from src.features.feature_selection import feature_selection_pipeline 
 from src.utils.utils import get_target, get_predictors
-
+from torchinfo import summary
 
 
 
@@ -93,11 +93,14 @@ num_points, _ = target_displacement.shape
 train_end_idx = int(train_ratio * num_points)
 val_end_idx = int((train_ratio + val_ratio) * num_points)
         
-target_data = target_displacement[:train_end_idx]
-val_data = target_displacement[train_end_idx:val_end_idx]
-test_data = target_displacement[val_end_idx:]
+# target_data = target_displacement[:train_end_idx]
+# val_data = target_displacement[train_end_idx:val_end_idx]
+# test_data = target_displacement[val_end_idx:]
 
 
+target_data = target_displacement[:7]
+val_data = target_displacement[8:9]
+test_data = target_displacement[10:11]
 
 
 
@@ -105,16 +108,16 @@ test_data = target_displacement[val_end_idx:]
 def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
-    hidden_size = 128
-    num_epochs = 5
-    learning_rate = 0.0001
+    hidden_size = 256
+    num_epochs = 500
+    learning_rate = 0.001
     optimizer = None
-    batch_size=32
+    batch_size=1
     num_workers=0 # Num of CPU cores for parallel data loading
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Since the MPs are estimated every 6 days, use seq_len = 50 to cover a year data (50*6=300 days)
-    seq_len = 10
+    seq_len = 15
     output_size = 1
     
     train_split = "train"
@@ -179,6 +182,7 @@ def main():
 
     # Initialize the model
     model = VGDModel(input_size, hidden_size, output_size)
+    
 
 
     # Load checkpoint or initialize training
@@ -222,31 +226,21 @@ def main():
 
     # Visualize results
     plot_results(ground_truth, predictions)
+    visualize_results(model, test_loader, device)
+    
                         
              
     
     # Perform SHAP analysis for train, validation, and test sets
-    compute_shap(model, train_loader, device, "Train", explainer_type="gradient")
-    compute_shap(model, train_loader, device, "Train", explainer_type="kernel")
-    compute_shap(model, train_loader, device, "Train", explainer_type="deep")
-    compute_shap(model, train_loader, device, "Train", explainer_type="tree")
-    
-    compute_shap(model, val_loader, device, "Validation", explainer_type="gradient")
-    compute_shap(model, val_loader, device, "Validation", explainer_type="kernel")
-    compute_shap(model, val_loader, device, "Validation", explainer_type="deep")
-    compute_shap(model, val_loader, device, "Validation", explainer_type="tree")
-    
-    compute_shap(model, test_loader, device, "Test", explainer_type="gradient")
-    compute_shap(model, test_loader, device, "Test", explainer_type="kernel")
-    compute_shap(model, test_loader, device, "Test", explainer_type="deep")
-    compute_shap(model, test_loader, device, "Test", explainer_type="tree")
+    compute_shap(model, train_loader, device, pred_vars, static_vars, "Train")
+    compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
+    compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
 
-    # Perform LIME analysis for train, validation, and test sets
-    compute_lime(model, train_loader, device, "Train")
-    compute_lime(model, val_loader, device, "Validation")
-    compute_lime(model, test_loader, device, "Test")
+    # # Perform LIME analysis for train, validation, and test sets
+    # compute_lime(model, train_loader, device, pred_vars, static_vars, "Train")
+    # compute_lime(model, val_loader, device, pred_vars, static_vars, "Validation")
+    # compute_lime(model, test_loader, device, pred_vars, static_vars, "Test")
     
-    visualize_results(model, test_loader, device)
     
     print("Time taken:", time.time() - start_time)
     
@@ -254,5 +248,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Batch size-leraning rate
+# https://arxiv.org/pdf/1612.05086
+
+# learning curve
+# https://machinelearningmastery.com/learning-curves-for-diagnosing-machine-learning-model-performance/
 
 # https://www.thenewatlantis.com/publications/correlation-causation-and-confusion?utm_source=chatgpt.com

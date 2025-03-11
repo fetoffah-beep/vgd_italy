@@ -2,6 +2,9 @@
 import torch
 import os
 
+# https://medium.com/analytics-vidhya/deep-learning-basics-weight-decay-3c68eb4344e9
+# https://medium.com/@Biboswan98/optim-adam-vs-optim-sgd-lets-dive-in-8dbf1890fbdc
+# https://cs231n.github.io/neural-networks-3/#ada
 
 # Function to load the model checkpoint (for resuming training)
 def load_checkpoint(file_path, model, learning_rate, optimizer=None):

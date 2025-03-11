@@ -26,16 +26,15 @@ def evaluate_model(model, test_loader, device="cpu"):
     predictions = []
     ground_truth = []
     
-    with open('test_out.txt', 'w') as f:
-        with torch.no_grad():  # Disable gradient computation
-            for inputs, targets in test_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)  # Model predictions
-                predictions.append(outputs)
-                ground_truth.append(targets)
-                outputs_list = outputs.cpu().numpy().tolist()  
-                f.write(f"Test Results: {outputs_list}\n")
-    
+    with torch.no_grad():  # Disable gradient computation
+        for dyn_inputs, static_input, targets in test_loader:
+            dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+            outputs = model(dyn_inputs, static_input)  # Model predictions
+            predictions.append(outputs)
+            ground_truth.append(targets)
+            outputs_list = outputs.cpu().numpy().tolist()  
+            
+            
     # Concatenate all batches into single tensors
     predictions = torch.cat(predictions, dim=0)
     ground_truth = torch.cat(ground_truth, dim=0)
