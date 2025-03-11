@@ -15,3 +15,4 @@ src/features/
 src/utils/logger.py
 eda.ipynb
 tra.spydata 
+code/tra.spydata
