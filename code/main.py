@@ -98,9 +98,9 @@ val_end_idx = int((train_ratio + val_ratio) * num_points)
 # test_data = target_displacement[val_end_idx:]
 
 
-target_data = target_displacement[:7]
-val_data = target_displacement[8:9]
-test_data = target_displacement[10:11]
+target_data = target_displacement[:1]
+val_data = target_displacement[2:3]
+test_data = target_displacement[4:5]
 
 
 
@@ -109,7 +109,7 @@ def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
     hidden_size = 256
-    num_epochs = 100
+    num_epochs = 500
     learning_rate = 0.001
     optimizer = None
     batch_size=1
