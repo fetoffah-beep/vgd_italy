@@ -109,7 +109,7 @@ def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
     hidden_size = 256
-    num_epochs = 500
+    num_epochs = 100
     learning_rate = 0.001
     optimizer = None
     batch_size=1
