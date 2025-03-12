@@ -108,8 +108,8 @@ test_data = target_displacement[4:5]
 def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
-    hidden_size = 256
-    num_epochs = 500
+    hidden_size = 128
+    num_epochs = 100
     learning_rate = 0.001
     optimizer = None
     batch_size=1
