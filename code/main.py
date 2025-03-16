@@ -25,6 +25,7 @@ from src.interpretation.lime_analysis import compute_lime
 from src.models.checkpoint import load_checkpoint
 from src.evaluation.visualize_results import visualize_results
 from src.evaluation.evaluation import evaluate_model
+from src.evaluation.shap_plot import shap_plot
 from src.evaluation.summary_stats import get_summary_stats, display_summary_stats
 from src.evaluation.visualization import plot_results
 from src.evaluation.correlation_analysis import comp_corr
@@ -64,8 +65,8 @@ aoi_path = "aoi/Emilia-Romagna.shp"
 
 
 # data_dir= 'data/raw/era5/New folder (2)/91668fe0cd4a8a6043f32b80b01d6447 (1)/*.nc'
-data_dir= 'data/raw/era5/test/*.nc'
-static_dir= 'data/raw/soildepth3_o_European_01min.nc'
+data_dir= 'data/predictors/era5/test/*.nc'
+static_dir= 'data/predictors/soildepth3_o_European_01min.nc'
 
 # aoi_gdf = gpd.read_file(aoi_path).to_crs("EPSG:3035")
 
@@ -108,7 +109,7 @@ test_data = target_displacement[4:5]
 def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
-    hidden_size = 128
+    hidden_size = 512
     num_epochs = 100
     learning_rate = 0.001
     optimizer = None
@@ -232,9 +233,13 @@ def main():
              
     
     # Perform SHAP analysis for train, validation, and test sets
-    compute_shap(model, train_loader, device, pred_vars, static_vars, "Train")
-    compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
-    compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
+    train_shap = compute_shap(model, train_loader, device, pred_vars, static_vars, "Train")
+    val_shap = compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
+    test_shap = compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
+    
+    shap_plot(train_shap)
+    shap_plot(val_shap)
+    shap_plot(test_shap)
 
     # # Perform LIME analysis for train, validation, and test sets
     # compute_lime(model, train_loader, device, pred_vars, static_vars, "Train")

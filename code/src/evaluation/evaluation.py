@@ -27,7 +27,7 @@ def evaluate_model(model, test_loader, device="cpu"):
     ground_truth = []
     
     with torch.no_grad():  # Disable gradient computation
-        for dyn_inputs, static_input, targets in test_loader:
+        for dyn_inputs, static_input, targets, _, _ in test_loader:
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
             outputs = model(dyn_inputs, static_input)  # Model predictions
             predictions.append(outputs)

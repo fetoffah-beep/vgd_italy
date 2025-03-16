@@ -96,7 +96,7 @@ def get_predictors(data_paths, aoi_path):
 
 def get_target():            
     #######################################   for the target    #######################################
-    target_displacement = pd.concat(pd.read_csv("C:/Users/39351/Desktop/sapienza/DNOT/topic/vgd_italy/code/data/processed/New folder/trial.csv", chunksize=1000))        
+    target_displacement = pd.concat(pd.read_csv("C:/Users/39351/Desktop/sapienza/DNOT/topic/vgd_italy/code/data/target/New folder/trial.csv", chunksize=1000))        
     target_times = target_displacement.columns[2:]
     return target_displacement, target_times
 

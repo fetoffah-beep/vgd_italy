@@ -43,7 +43,7 @@ def train_model(
         model.train()  # Set the model to training mode
         training_loss = 0.0
 
-        for dyn_inputs, static_input, targets in train_loader:
+        for dyn_inputs, static_input, targets, _, _ in train_loader:
             # Move data to the same device as the model
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
 
@@ -73,7 +73,7 @@ def train_model(
         model.eval()  # Set the model to evaluation mode
         val_loss = 0.0
         with torch.no_grad():
-            for dyn_inputs, static_input, targets in val_loader:
+            for dyn_inputs, static_input, targets, _, _ in val_loader:
                 dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                 outputs = model(dyn_inputs, static_input)
                 loss = loss_fun(outputs, targets)

@@ -38,7 +38,7 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
     # Extract all data from the loader
     all_dyn_inputs, all_static_inputs = [], []
-    for dyn_inputs, static_input, _ in data_loader:
+    for dyn_inputs, static_input, _, _, _ in data_loader:
         all_dyn_inputs.append(dyn_inputs.cpu().numpy())
         all_static_inputs.append(static_input.cpu().numpy())
 

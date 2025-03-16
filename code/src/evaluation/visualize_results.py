@@ -19,7 +19,7 @@ def visualize_results(model, data_loader, device):
     cmap = cm.get_cmap('viridis')
 
     with torch.no_grad():
-        for dyn_inputs, static_input, targets in data_loader:
+        for dyn_inputs, static_input, targets, _, _ in data_loader:
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
             
             # Get model predictions
@@ -39,20 +39,6 @@ def visualize_results(model, data_loader, device):
     prediction_colors = cmap(np.linspace(0, 1, len(predictions)))
     
     plt.figure(figsize=(12, 6))
-    
-    
-    
-    # plt.scatter(range(len(ground_truth)), ground_truth, color=ground_truth_colors, label="Ground Truth", marker="x", alpha=0.7)
-
-    # plt.plot(ground_truth, color = "blue", alpha = 0.3)
-
-    # plt.scatter(range(len(predictions)), predictions, color=prediction_colors, label="Predictions", marker="o", alpha=0.7)
-
-    # plt.plot(predictions, color = "red", alpha = 0.3)
-
-
-
-
     
     plt.plot(ground_truth, label="Ground Truth", marker="x", linestyle="-", alpha=0.7, color="blue")
     plt.plot(predictions, label="Predictions", marker="o", linestyle="--", alpha=0.7, color="red")
