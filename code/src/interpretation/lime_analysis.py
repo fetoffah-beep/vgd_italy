@@ -54,7 +54,14 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
     all_inputs = np.concatenate([flattened_dyn_inputs, flattened_static_inputs], axis=1)  # Shape: (5, 15*3*5*5 + 3*5*5)
 
-    feature_names = pred_vars + static_vars
+    dyn_feature_names = [f"dyn_{i}" for i in range(flattened_dyn_inputs.shape[1])]
+    static_feature_names = [f"stat_{i}" for i in range(flattened_static_inputs.shape[1])]
+    feature_names = dyn_feature_names + static_feature_names
+    
+    
+    
+    
+    # feature_names = pred_vars + static_vars
 
     # Initialize LIME Explainer
     explainer = lime.lime_tabular.LimeTabularExplainer(
@@ -64,8 +71,7 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
         discretize_continuous=True
     )
     
-
-
+    
     # Process in chunks
     for start_idx in tqdm(range(0, len(all_inputs), chunk_size), desc=f"Processing {dataset_name} data"):
         end_idx = min(start_idx + chunk_size, len(all_inputs))
@@ -73,9 +79,19 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
         for i, instance in enumerate(batch_inputs):
             def model_predict_fn(x):
-                x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+                # Reconstruct dynamic and static inputs from flattened input
+                dyn_size = flattened_dyn_inputs.shape[1]
+                dyn_input_flat = x[:, :dyn_size]
+                static_input_flat = x[:, dyn_size:]
+
+                dyn_input = dyn_input_flat.reshape(x.shape[0], *all_dyn_inputs.shape[1:])
+                static_input = static_input_flat.reshape(x.shape[0], *all_static_inputs.shape[1:])
+
+                dyn_tensor = torch.tensor(dyn_input, dtype=torch.float32).to(device)
+                static_tensor = torch.tensor(static_input, dtype=torch.float32).to(device)
+
                 with torch.no_grad():
-                    return model(x_tensor).cpu().numpy()
+                    return model(dyn_tensor, static_tensor).cpu().numpy()
 
             # Generate LIME explanation
             explanation = explainer.explain_instance(instance, model_predict_fn)
@@ -86,6 +102,4 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
         # Save results incrementally to CSV
         df = pd.DataFrame(feature_importances)
         df.to_csv(output_csv, mode='a', header=not os.path.exists(output_csv), index=False)
-        feature_importances = []  
-        
-    print(f"LIME feature importances saved to {output_csv}")
+        feature_importances = []

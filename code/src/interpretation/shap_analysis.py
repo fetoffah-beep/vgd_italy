@@ -117,3 +117,45 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     #     # len(shap_values[0][0][0][0][0]) → 5  (Height)
     #     # len(shap_values[0][0][0][0][0][0]) → 5  (Width)
         
+    
+    
+    
+# len(dyn_shap_values_all)
+# Out[15]: 15
+
+# len(dyn_shap_values_all[0])
+# Out[16]: 1
+
+# len(dyn_shap_values_all[0][0])
+# Out[17]: 15
+
+# len(dyn_shap_values_all[0][0][0])
+# Out[18]: 3
+
+# len(dyn_shap_values_all[0][0][0][0])
+# Out[19]: 5
+
+# len(dyn_shap_values_all[0][0][0][0][0])
+# Out[20]: 5
+
+
+# len(shap_values)
+# Out[25]: 15
+
+# len(shap_values[0])
+# Out[26]: 2
+
+# len(shap_values[0][0])
+# Out[27]: 1
+
+# len(shap_values[0][0][0])
+# Out[28]: 15
+
+# len(shap_values[0][0][0][0])
+# Out[29]: 3
+
+# len(shap_values[0][0][0][0][0])
+# Out[30]: 5
+
+# len(shap_values[0][0][0][0][0][0])
+# Out[31]: 5

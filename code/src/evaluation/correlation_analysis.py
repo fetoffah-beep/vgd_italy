@@ -8,7 +8,7 @@ import torch
 import numpy as np
 from scipy.stats import spearmanr
 
-def comp_corr(data_loaders, device, file_path="../../output/correlation_results.txt"):
+def comp_corr(data_loaders, pred_vars, static_vars, device, file_path="output/correlation_results.txt"):
     """
     Computes correlations between each input feature and the target variable across all datasets,
     categorizes them, and saves the results to a file.
@@ -18,28 +18,48 @@ def comp_corr(data_loaders, device, file_path="../../output/correlation_results.
         device (torch.device): Device to run computations on ('cpu' or 'cuda').
         file_path (str): Path to save the results file.
     """
-    all_features = []
-    all_targets = []
+    
+    dynamic_features = []
+    static_features = []
+    targets = []
+    
 
     with torch.no_grad():
         for data_loader in data_loaders:
-            for inputs, targets, *_ in data_loader:
-                inputs, targets = inputs.to(device), targets.to(device)
-                all_features.append(inputs.cpu().numpy())
-                all_targets.append(targets.cpu().numpy())
+            for dyn_inputs, static_input, targets, _, _ in data_loader:
+                dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+                dynamic_features.append(dyn_inputs.cpu().numpy())
+                static_features.append(static_input.cpu().numpy())
+                targets.append(targets.cpu().numpy())
 
-    # Convert lists to NumPy arrays
-    all_features = np.vstack(all_features)
-    all_targets = np.concatenate(all_targets)
+    # Concatenate the data
+    dynamic_features = np.concatenate(dynamic_features, axis=0) # [batch, sequence_length, features, height, width]
+    static_features = np.concatenate(static_features, axis=0) # [batch, features, height, width]
+    targets_list = np.concatenate(targets, axis=0) # [batch, target_features]
 
-    num_features = all_features.shape[1]
+    # Average dynamic features over time, height, and width
+    dynamic_features_mean = np.mean(dynamic_features, axis=(1, 3, 4)) # [batch, features]
+
+    # Average static features over height and width
+    static_features_mean = np.mean(static_features, axis=(2, 3)) # [batch, features]
+    
+    
+    dynamic_df = pd.DataFrame(dynamic_features_mean, columns=pred_vars)
+    static_df = pd.DataFrame(static_features_mean, columns=static_vars)
+    targets_df = pd.DataFrame(targets_list, columns=['displacement'])
+    
+    df = pd.concat([dynamic_df, static_df, targets_df], axis=1)
+    
+    correlation_matrix = df.corr(method='spearman')
+    
+
     correlations = {}
-
-
-    for i in range(num_features):
-        feature = all_features[:, i]
-        corr, _ = spearmanr(feature, all_targets)
-        correlations[f"Feature_{i}"] = corr
+    
+    
+    for col in df.columns:
+        if col != 'displacement':
+            corr, _ = spearmanr(df[col], df['displacement'])
+            correlations[col] = corr
         
 
     # Categorization bins
@@ -73,9 +93,12 @@ def comp_corr(data_loaders, device, file_path="../../output/correlation_results.
         for feature, value in correlations.items():
             file.write(f"{feature}: {value:.4f}\n")
 
-        file.write("\nCorrelation Categories:\n")
+        file.write("\n\n Correlation Categories:\n")
         for category, count in categories.items():
             file.write(f"{category}: {count}\n")
+        
+        file.write("\n\n Correlation Matrix:\n")
+        file.write(correlation_matrix.to_string())
 
 
 

@@ -99,9 +99,9 @@ val_end_idx = int((train_ratio + val_ratio) * num_points)
 # test_data = target_displacement[val_end_idx:]
 
 
-target_data = target_displacement[:1]
-val_data = target_displacement[2:3]
-test_data = target_displacement[4:5]
+target_data = target_displacement[:50]
+val_data = target_displacement[50:60]
+test_data = target_displacement[60:70]
 
 
 
@@ -109,16 +109,16 @@ test_data = target_displacement[4:5]
 def main():
     # Configuration
     checkpoint_path = 'model_checkpoint.pth'
-    hidden_size = 512
+    hidden_size = 258
     num_epochs = 100
     learning_rate = 0.001
     optimizer = None
-    batch_size=1
+    batch_size=15
     num_workers=0 # Num of CPU cores for parallel data loading
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Since the MPs are estimated every 6 days, use seq_len = 50 to cover a year data (50*6=300 days)
-    seq_len = 15
+    seq_len = 10
     output_size = 1
     
     train_split = "train"
@@ -132,31 +132,13 @@ def main():
     
     
     input_size = len(variables_list)  # Number of input features. time is added to the dataset as a feature to enable the model learn with time
-    # input_size = len(selected_features) 
-
-    
-
-    
-    # Define the split ratios for train, validation, and test
-
-    
-    # # Initialize the dataset for train, val, and test splits
-    # train_dataset = VGDDataset(data_dir, aoi_path, train_split, transform=transform, target_transform=target_transform, device=device)
-    # val_dataset = VGDDataset(data_dir, aoi_path, val_split, transform=transform, target_transform=target_transform, device=device)
-    # test_dataset = VGDDataset(data_dir, aoi_path, test_split, transform=transform, target_transform=target_transform, device=device)
     
     # Initialize the dataset for train, val, and test splits
-    
-        
     train_dataset = VGDDataset(train_split, target_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
     val_dataset = VGDDataset(val_split, val_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
     test_dataset = VGDDataset(test_split, test_data, target_times, predictors, pred_vars, pred_mean, pred_std, static_predictors, static_vars, static_mean, static_std, device=device, seq_len=seq_len)
     
-    
-    
-
-    # Create DataLoaders for batching
-    
+    # Create DataLoaders for batching    
     train_loader = VGDDataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
     val_loader = VGDDataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
     test_loader = VGDDataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
@@ -164,28 +146,14 @@ def main():
 
     # Get the data loaders for train, validation, and test sets
     train_loader, val_loader, test_loader = train_loader.data_loader, val_loader.data_loader, test_loader.data_loader
-    # train_loader = train_loader.data_loader
     
-    # train_loader = next(iter(train_loader))
-    # val_loader = next(iter(val_loader))
-    # test_loader = next(iter(test_loader))
-    
-
-    
-    # selected_features = create_and_select_features(data_dir, variables_list, aoi_gdf)
-    # print(selected_features)
-
     
     # Compute correlations
-    # comp_corr([train_loader, val_loader, test_loader], device)
-
-
-
+    comp_corr([train_loader, val_loader, test_loader], pred_vars, static_vars, device)
+    
     # Initialize the model
     model = VGDModel(input_size, hidden_size, output_size)
     
-
-
     # Load checkpoint or initialize training
     model, optimizer, start_epoch = load_checkpoint(checkpoint_path, model, learning_rate, optimizer)
         
@@ -234,17 +202,18 @@ def main():
     
     # Perform SHAP analysis for train, validation, and test sets
     train_shap = compute_shap(model, train_loader, device, pred_vars, static_vars, "Train")
-    val_shap = compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
-    test_shap = compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
-    
     shap_plot(train_shap)
+    
+    val_shap = compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
     shap_plot(val_shap)
+    
+    test_shap = compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
     shap_plot(test_shap)
 
-    # # Perform LIME analysis for train, validation, and test sets
-    # compute_lime(model, train_loader, device, pred_vars, static_vars, "Train")
-    # compute_lime(model, val_loader, device, pred_vars, static_vars, "Validation")
-    # compute_lime(model, test_loader, device, pred_vars, static_vars, "Test")
+    # Perform LIME analysis for train, validation, and test sets
+    compute_lime(model, train_loader, device, pred_vars, static_vars, "Train")
+    compute_lime(model, val_loader, device, pred_vars, static_vars, "Validation")
+    compute_lime(model, test_loader, device, pred_vars, static_vars, "Test")
     
     
     print("Time taken:", time.time() - start_time)
@@ -261,3 +230,12 @@ if __name__ == "__main__":
 # https://machinelearningmastery.com/learning-curves-for-diagnosing-machine-learning-model-performance/
 
 # https://www.thenewatlantis.com/publications/correlation-causation-and-confusion?utm_source=chatgpt.com
+
+
+
+
+    # # Initialize the dataset for train, val, and test splits
+    # train_dataset = VGDDataset(data_dir, aoi_path, train_split, transform=transform, target_transform=target_transform, device=device)
+    # val_dataset = VGDDataset(data_dir, aoi_path, val_split, transform=transform, target_transform=target_transform, device=device)
+    # test_dataset = VGDDataset(data_dir, aoi_path, test_split, transform=transform, target_transform=target_transform, device=device)
+    
