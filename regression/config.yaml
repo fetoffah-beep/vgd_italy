@@ -1,0 +1,101 @@
+aoi_path: r"C:\Users\gmfet\vgd_italy\emilia_aoi\Emilia-Romagna.shp"
+training:
+  identifier: vgd
+  usecase: displacement
+  epochs: 10
+  batch_size: 32
+  num_workers: 0
+  seq_len: 25
+model:
+  name: CNN-ConvLSTM
+  input_size: null
+  output_size: 1
+  hidden_layers:
+  - 128
+  - 64
+  - 32
+  device: cuda
+  model_path: null
+data:
+  init_args:
+    means:
+      static:
+      - 100.7472152709961
+      - 292.67828369140625
+      - 173.31866455078125
+      - 32.86404037475586
+      - 684.5177612304688
+      - 131.7283477783203
+      - 371.9583435058594
+      - 14.521151542663574
+      - 434.1429443359375
+      - 2.0311262607574463
+      - 319.10687255859375
+      - 167.5660400390625
+      - 275.0234680175781
+      dynamic:
+      - 1.5237045288085938
+      - 96.75408935546875
+      - 5.9552130699157715
+      target: -5.6704888343811035
+    stds:
+      static:
+      - 51.76155090332031
+      - 154.61619567871094
+      - 282.35772705078125
+      - 15.342650413513184
+      - 1476.9639892578125
+      - 90.48908233642578
+      - 191.38172912597656
+      - 8.751855850219727
+      - 261.202392578125
+      - 0.6263066530227661
+      - 162.07310485839844
+      - 85.90670776367188
+      - 139.65419006347656
+      dynamic:
+      - 4.964529037475586
+      - 158.7789764404297
+      - 9.549299240112305
+      target: 9.522238731384277
+    features:
+      dynamic:
+      - Precipitation
+      - drought_code
+      - temperature
+      static:
+      - bulk_density
+      - clay_content
+      - dem
+      - land_cover
+      - population_density_2020_1km
+      - sand
+      - silt
+      - slope
+      - soil_organic_carbon
+      - topo_wetness_index
+      - vol. water content at -10
+      - vol. water content at -1500 kPa
+      - vol. water content at -33 kPa
+      target: displacement
+optimizer:
+  class_path: torch.optim.Adam
+  init_args:
+    lr: 0.0001
+    weight_decay: 0.1
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
+    factor: 0.5
+    patience: 5
+logging:
+  log_dir: null
+  log_frequency: null
+checkpoint:
+  save_path: null
+  save_frequency: null
+augmentations:
+  horizontal_flip: null
+  random_crop: null
+  resize: null

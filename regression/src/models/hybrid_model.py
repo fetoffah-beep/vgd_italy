@@ -24,7 +24,7 @@ import torch.nn.functional as F
 
 
 class VGDModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, num_layers=3):
+    def __init__(self, dyn_feat, static_feat, hidden_size, output_size):
         """
         CNN-ConvLSTM model for Vertical Ground Displacement (VGD) prediction.
         
@@ -55,60 +55,56 @@ class VGDModel(nn.Module):
         """
         super(VGDModel, self).__init__()
         
-        self.input_size = input_size
         self.output_size = 1
-        self.hidden_dim = hidden_size
+        self.hidden_dim = [32] #[128,64,32] #[128, 64, 64]
         self.kernel_size = (3,3)
-        self.num_layers=3
+        self.num_layers= 1 #3
+        
+        self.num_static_features = len(static_feat)
+        self.num_dyn_features = len(dyn_feat)
+        
         
         
         
         self.seq_model = nn.Sequential(
-            nn.Conv2d(in_channels=input_size, out_channels=16, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=self.num_static_features, out_channels=16, kernel_size=3, padding=2),
             nn.BatchNorm2d(16),
             nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.AdaptiveAvgPool2d((4, 4)),
-            # nn.MaxPool2d(kernel_size=2, stride=1),
+            nn.Dropout(0.1),
+            nn.MaxPool2d(kernel_size=2, stride=1),
+            
             nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.AdaptiveAvgPool2d((4, 4)),
-            # nn.MaxPool2d(kernel_size=2, stride=1),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.AdaptiveAvgPool2d((4, 4)),
-            # nn.MaxPool2d(kernel_size=2, stride=2)
+            nn.Dropout(0.2),
+            nn.MaxPool2d(kernel_size=2, stride=1)
         )
         
-        
-        
 
-        self.dynamic_model = ConvLSTM(self.input_size, 
+        self.dynamic_model = ConvLSTM(self.num_dyn_features, 
                                       self.hidden_dim, 
                                       self.kernel_size, 
                                       self.num_layers,
                                       batch_first=True
                             )
-        # Fully connected layers to map output to the target        
-        self.fc_cnn = nn.Sequential(
-            nn.Linear(64*4*4, self.hidden_dim),
-            # nn.ReLU(),
-            # nn.Dropout(0.1),
-            # nn.Linear(self.hidden_dim, self.output_size)
+        
+        
+        
+        self.fusion_layer = ConvLSTM(
+            input_dim=36, 
+            hidden_dim=[32],
+            kernel_size=(3, 3),
+            num_layers=1,
+            batch_first=True,
         )
         
-        self.hybrid_fc = nn.Sequential(
-            nn.Linear(self.hidden_dim*2, self.hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(self.hidden_dim, self.output_size)
-        )
+        self.final_layer = nn.Conv2d(in_channels=32,
+                                      out_channels=self.output_size,
+                                      kernel_size=3,
+                                      padding=1)
         
-         
+        
+        
 
     def forward(self, dynamic_input, static_input):
         """
@@ -124,30 +120,46 @@ class VGDModel(nn.Module):
             
             
         """
+        batch_size, time_frame, _, h, w = dynamic_input.size()
         
-        timef  = dynamic_input.shape[1]
         
         # ################# ConvLSTM for Dynamic features #################
-        dynamic_out, _ = self.dynamic_model(dynamic_input)
-        # print(dynamic_out)
-        # dynamic_out = torch.stack(dynamic_out, dim=1)
-        dynamic_out = torch.mean(dynamic_out[-1], dim=(3, 4))
-        dynamic_out = torch.flatten(dynamic_out, start_dim=2)  # flatten all dimensions except batch and time_step
-        
-        
+        dynamic_out_layers, _ = self.dynamic_model(dynamic_input)
+        dynamic_out = dynamic_out_layers[-1]
+
         
         ################# CNN for static features #################
         x_cnn = static_input[:, :, :, :]
         x_cnn = self.seq_model(x_cnn)
-        x_cnn = torch.flatten(x_cnn, 1)  # flatten all dimensions except batch and time_step
-        x_cnn = self.fc_cnn(x_cnn)
-    
-        x_cnn = x_cnn.unsqueeze(1)
-        static_out = x_cnn.repeat(1, timef, 1)
         
+        static_out = x_cnn.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
+        static_out
+
+        ################# HYBRID MODEL #################           
         # Non-empty tensors provided for concatenation must have the same shape, except in the cat dimension.
-        # Concatenate the tensors along the feature dimension        
-        dynstat_output = torch.cat([dynamic_out, static_out], dim=2)
+        # Ensure the spatial dimensions match before concatenation
+
+        fused_features = torch.cat([dynamic_out, static_out], dim=2)
         
-        output = self.hybrid_fc(dynstat_output)
+          
+        # Further fusion with a convolutional layer
+        fused_output, _ = self.fusion_layer(fused_features)
+        fused_output = fused_output[-1]
+        
+        next_timestep_features = fused_output[:, -1]
+        
+        
+        
+        # fused_output = fused_output.view(batch_size, time_frame, -1, fused_features.size(3), fused_features.size(4))
+
+        # Predict displacement
+        displacement_predictions = self.final_layer(next_timestep_features)
+        output = F.adaptive_avg_pool2d(displacement_predictions, (1, 1)).squeeze(-1).squeeze(-1)  # [B, 1]
+        
+        # output = displacement_predictions.view(batch_size, time_frame, self.output_size, fused_output.size(3), fused_output.size(4))
+        # output = output[:, -1, :, output.size(-2)//2, output.size(-1)//2]
+
         return output
+
+
+      

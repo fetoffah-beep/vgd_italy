@@ -35,7 +35,7 @@ def get_summary_stats(data):
     stats = {
         "mean": torch.mean(data).item(),
         "median": torch.median(data).item(),
-        "std": torch.std(data, unbiased=False).item(),  # Use unbiased=False for compatibility
+        "std": torch.std(data, unbiased=False).item(),
         "min": torch.min(data).item(),
         "max": torch.max(data).item(),
         "iqr": iqr

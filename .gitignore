@@ -8,9 +8,15 @@ __pycache__/
 .cache
 
 
-output/
+
 data/
-working_package
+working_package/
+data_pre_processing/*.csv
+emilia_aoi/
+italy_aoi/
+output/
+regression/aoi/
+
 
 # Distribution / packaging
 .Python

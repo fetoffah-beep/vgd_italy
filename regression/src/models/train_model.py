@@ -3,12 +3,15 @@ import torch.optim as optim
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from torchinfo import summary
+from torch.optim.lr_scheduler import StepLR
+from tqdm import tqdm
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+# https://www.geeksforgeeks.org/l1l2-regularization-in-pytorch/
 
-def train_model(
-    model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, 
-    checkpoint_path=None, grad_clip=None, device=None
-):
+def train_model(model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None, device=None):
+    
     """
     Function to train the LSTM model.
 
@@ -30,73 +33,106 @@ def train_model(
     model.to(device)
 
     # Loss function (Mean Squared Error for regression)
-    loss_fun = nn.MSELoss()
+    # loss_fun = nn.MSELoss() #nn.SmoothL1Loss()
+    loss_fun = nn.SmoothL1Loss()
+    grad_clip = 1
     
     training_losses = []  
     validation_losses = []
 
 
 
-
+    
+    log_interval = 10000  # validate every 10,000 steps
+    step = 0
+    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)  
+    best_val_loss = float('inf')
+    patience = 5
+    patience_counter = 0
+    
+    # track interval loss
+    interval_loss_accum = 0.0
+    interval_step_count = 0
     
     for epoch in range(start_epoch, num_epochs):
-        model.train()  # Set the model to training mode
+        model.train()
         training_loss = 0.0
-
-        for dyn_inputs, static_input, targets, _, _ in train_loader:
-            # Move data to the same device as the model
+        for dyn_inputs, static_input, targets, _, _ in tqdm(train_loader):
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
-
-            optimizer.zero_grad() 
-
-            # Forward pass
+            optimizer.zero_grad()
             outputs = model(dyn_inputs, static_input)
-
-            # Calculate the loss
+            targets = targets.unsqueeze(-1)
             loss = loss_fun(outputs, targets)
-
-            # Backward pass and optimization
+            
+            # L2 regularization
+            # l2_lambda = 0.001 
+            # l2_norm = sum(param.pow(2).sum() for param in model.parameters())
+            # loss += l2_lambda * l2_norm
+    
             loss.backward()
-
+            
             # Gradient clipping (if specified)
             if grad_clip is not None:
                 nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-                
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1) 
+            # nn.utils.clip_grad_norm_(model.parameters(), max_norm=1) 
 
             optimizer.step()
-
+            
             training_loss += loss.item()
+            
+        scheduler.step()
+    
+        #     # Update step count and interval loss
+        #     step += 1
+        #     interval_loss_accum += loss.item()
+        #     interval_step_count += 1
+    
+        #     # if step % log_interval == 0:
+        #         # Average interval training loss
+        # training_loss = interval_loss_accum / interval_step_count
 
+        # # Reset accumulators
+        # interval_loss_accum = 0.0
+        # interval_step_count = 0
 
-        # Validation phase
-        model.eval()  # Set the model to evaluation mode
+        # Validation
+        model.eval()
         val_loss = 0.0
         with torch.no_grad():
             for dyn_inputs, static_input, targets, _, _ in val_loader:
                 dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                 outputs = model(dyn_inputs, static_input)
+                targets = targets.unsqueeze(-1)
                 loss = loss_fun(outputs, targets)
                 val_loss += loss.item()
-
-        # Normalize losses
+                
         training_loss /= len(train_loader)
         val_loss /= len(val_loader)
+
+        # Save losses
         
         training_losses.append(training_loss)
         validation_losses.append(val_loss)
 
-        # Print loss for each epoch
-        print(
-            f"Epoch [{epoch + 1}/{num_epochs}], "
-            f"Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}"
-        )
+        print(f"Epoch {epoch} | Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}")
 
-        # Save checkpoint at the end of every epoch if specified
-        if checkpoint_path:
-            save_checkpoint(model, optimizer, epoch, checkpoint_path)
+        # Early stopping logic
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+            if checkpoint_path:
+                save_checkpoint(model, optimizer, epoch, checkpoint_path)
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping at step {step} (epoch {epoch + 1})")
+                plot_losses(training_losses, validation_losses)
+                return  # Exit training early
+    
+        
 
-    plot_losses(training_losses, validation_losses)
+
+    # plot_losses(training_losses, validation_losses)
     
     # print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
 
@@ -110,7 +146,6 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
-    # print(f"Checkpoint saved at epoch {epoch + 1} to {checkpoint_path}")
 
 
 def plot_losses(training_losses, validation_losses):
@@ -124,4 +159,25 @@ def plot_losses(training_losses, validation_losses):
     plt.ylabel('Loss')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    plt.tight_layout()
+    plt.savefig(f'output/training_curve_{timestamp}.png')
+
+    
+
+    
+# def autoregressive(model, initial_sequence, static_input, num_future_frames, device):
+#     model.eval()
+#     future_frames = []
+#     current_sequence = initial_sequence.to(device)
+#     static_input = static_input.to(device)
+
+#     with torch.no_grad():
+#         for _ in range(num_future_frames):
+#             output = model(current_sequence, static_input)
+#             next_frame = output[:, -1:]  # Take the last predicted frame
+#             future_frames.append(next_frame.cpu())
+#             current_sequence = torch.cat([current_sequence, next_frame], dim=1) # Append prediction to the sequence
+
+#     return torch.cat(future_frames, dim=1)
+
+

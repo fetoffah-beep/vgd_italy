@@ -2,7 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-def plot_results(ground_truth, predictions):
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def plot_results(ground_truth, predictions, residuals):
     """
     Plots ground truth vs predictions and residuals.
     
@@ -30,7 +33,13 @@ def plot_results(ground_truth, predictions):
 
     # Residuals Histogram
     plt.subplot(1, 2, 2)
-    plt.hist(res, bins=30, alpha=0.7, color="blue", edgecolor="black", density=True)
+    
+    if res.ndim > 1: 
+        for i in range(res.shape[1]):
+            plt.hist(res[:, i], bins=30, alpha=0.5, label=f"Residuals {i}") 
+    else:
+        plt.hist(res, bins=30, alpha=0.7, color="blue", edgecolor="black", density=True) 
+        
     plt.axvline(0, color="red", linestyle="--", label="Zero Residual")
     plt.xlabel("Residuals")
     plt.ylabel("Density")
@@ -39,4 +48,6 @@ def plot_results(ground_truth, predictions):
     plt.grid(True)
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f'output/residual_distribution_{timestamp}.png')
+
+ 

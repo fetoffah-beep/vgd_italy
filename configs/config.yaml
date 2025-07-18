@@ -1,0 +1,66 @@
+# General training configuration
+training:
+  identifier: vgd
+  usecase: displacement
+  epochs: 10               
+  batch_size: 32          
+  num_workers: 25
+
+# Model configuration
+model:
+  name:  CNN-ConvLSTM 
+  input_size:           # Input dimensions (list or int)
+  output_size: 1        # Output dimensions (int)
+  hidden_layers: [128,64,32]       
+  device: torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+  model_path: 
+
+# Data configuration
+data:
+  aoi_path: ../emilia_aoi/training.shp 
+  root_dir:             # Root directory of your dataset (str)
+  train_split:          # Path to training split or ratio (str/float)
+  val_split:            # Path to validation split or ratio (str/float)
+  test_split:           # Path to test split or ratio (str/float)
+  target_times:
+  seq_len: 24
+
+  # Normalization stats
+  init_args:
+    means:
+       static:
+       dynamic:
+       target:
+          displacement:
+    stds:
+       static:
+       dynamic:
+       target:
+          
+optimizer:
+  class_path: torch.optim.Adam
+  init_args:
+    lr: 1.e-4
+    weight_decay: 0.1
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
+    factor: 0.5
+    patience: 5
+
+# Logging configuration
+logging:
+  log_dir:              # Directory to save logs
+  log_frequency:        # How often to log (int)
+
+# Checkpointing
+checkpoint:
+  save_path:            # Where to save checkpoints
+  save_frequency:       # Frequency of saving model (int)
+
+# Augmentations (optional)
+augmentations:
+  horizontal_flip:      # True/False
+  random_crop:          # True/False
+  resize:               # [height, width]
