@@ -224,20 +224,20 @@ def main(args):
     # Visualize results
     plot_results(ground_truth, predictions, residuals)
 
-    #     # Perform SHAP analysis for train, validation, and test sets
-    #     train_shap = compute_shap(model, train_loader, device, pred_vars, static_vars, "Train")
-    #     shap_plot(train_shap)
+    # # Perform SHAP analysis for train, validation, and test sets
+    # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # shap_plot(train_shap)
 
-    #     val_shap = compute_shap(model, val_loader, device, pred_vars, static_vars, "Validation")
-    #     shap_plot(val_shap)
+    # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # shap_plot(val_shap)
 
-    #     test_shap = compute_shap(model, test_loader, device, pred_vars, static_vars, "Test")
-    #     shap_plot(test_shap)
+    # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # shap_plot(test_shap)
 
-    #     # Perform LIME analysis for train, validation, and test sets
-    #     compute_lime(model, train_loader, device, pred_vars, static_vars, "Train")
-    #     compute_lime(model, val_loader, device, pred_vars, static_vars, "Validation")
-    #     compute_lime(model, test_loader, device, pred_vars, static_vars, "Test")
+    # Perform LIME analysis for train, validation, and test sets
+    # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
 
     print("Time taken:", time.time() - start_time)
 
@@ -252,16 +252,18 @@ if __name__ == "__main__":
     # main(args)
     
     do_profiling = True
+    profile_file = "profile_data.prof"
+    
     if do_profiling:
         with cProfile.Profile() as pr:
             main(args)
 
-        with open("profile_results.prof", "w") as stream:
+        with open(profile_file, "w") as stream:
             stats = Stats(pr, stream=stream)
             stats.strip_dirs()
             stats.sort_stats("time")
-            stats.dump_stats("profile_results.prof")
-            # stats.print_stats(5)
+            stats.dump_stats(profile_file)
+            stats.print_stats(5)
 
         # 2. Then, from the command line, run:
         # python -m  snakeviz profile_results.prof

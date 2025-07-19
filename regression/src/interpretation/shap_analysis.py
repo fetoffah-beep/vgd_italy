@@ -26,10 +26,22 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     - explainer_type: Type of SHAP explainer ('gradient', 'kernel', 'deep', 'tree', or 'auto').
     """
     model.to(device)
-    model.eval()  
+    model.eval() 
     
     
-    explainer = shap.DeepExplainer(model, next(iter(data_loader))[:2]) #get a sample batch for the explainer
+    
+    sample_batch = next(iter(data_loader))
+    explainer_data = [sample_batch[0].to(device), sample_batch[1].to(device)]
+
+    # Initialize the explainer with the model and the device-correct sample data
+    explainer = shap.DeepExplainer(model, explainer_data)
+    
+    
+    
+    
+    
+    
+    # explainer = shap.DeepExplainer(model, next(iter(data_loader))[:2]) #get a sample batch for the explainer
 
 
 

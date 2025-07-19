@@ -65,9 +65,9 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
             loss = loss_fun(outputs, targets)
             
             # L2 regularization
-            # l2_lambda = 0.001 
-            # l2_norm = sum(param.pow(2).sum() for param in model.parameters())
-            # loss += l2_lambda * l2_norm
+            l2_lambda = 0.001 
+            l2_norm = sum(param.pow(2).sum() for param in model.parameters())
+            loss += l2_lambda * l2_norm
     
             loss.backward()
             

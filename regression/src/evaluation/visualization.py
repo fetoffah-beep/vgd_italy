@@ -14,8 +14,8 @@ def plot_results(ground_truth, predictions, residuals):
         predictions (torch.Tensor): Predicted values.
     """
     # Ensure correct shape and convert to NumPy
-    gt = ground_truth.cpu().numpy().squeeze()
-    preds = predictions.cpu().numpy().squeeze()
+    gt = ground_truth.squeeze()
+    preds = predictions.squeeze()
     res = (preds - gt)  # Residuals
 
     plt.figure(figsize=(15, 5))

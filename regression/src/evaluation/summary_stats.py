@@ -14,6 +14,7 @@ def get_summary_stats(data):
         dict: A dictionary containing summary statistics.
     """
     # Flatten to ensure 1D tensor
+    data = torch.from_numpy(data).float()
     data = data.flatten()
     
     # Handle empty tensors

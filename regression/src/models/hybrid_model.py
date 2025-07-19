@@ -91,7 +91,7 @@ class VGDModel(nn.Module):
         
         
         self.fusion_layer = ConvLSTM(
-            input_dim=36, 
+            input_dim=64, 
             hidden_dim=[32],
             kernel_size=(3, 3),
             num_layers=1,
@@ -133,7 +133,7 @@ class VGDModel(nn.Module):
         x_cnn = self.seq_model(x_cnn)
         
         static_out = x_cnn.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
-        static_out
+        
 
         ################# HYBRID MODEL #################           
         # Non-empty tensors provided for concatenation must have the same shape, except in the cat dimension.
