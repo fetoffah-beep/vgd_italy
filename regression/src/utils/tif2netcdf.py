@@ -5,14 +5,6 @@ Created on Sat Jul 19 17:38:08 2025
 @author: gmfet
 """
 
-
-
-
-
-
-
-
-
 import rioxarray as rxr
 import pandas as pd
 

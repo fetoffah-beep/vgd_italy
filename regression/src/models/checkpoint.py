@@ -16,7 +16,7 @@ def load_checkpoint(file_path, model, learning_rate, device, optimizer=None):
         if optimizer is not None:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         else:
-            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
         
         start_epoch = checkpoint['epoch']
         print(f"Checkpoint loaded from {file_path}")
@@ -24,8 +24,7 @@ def load_checkpoint(file_path, model, learning_rate, device, optimizer=None):
     else:
         print(f"No checkpoint found at {file_path}")
         start_epoch = 0  # Start training from scratch
-        if optimizer is None:
-            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
         print(f"Starting training from scratch with {optimizer}")
         
     return model, optimizer, start_epoch

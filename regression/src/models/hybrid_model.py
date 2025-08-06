@@ -56,7 +56,7 @@ class VGDModel(nn.Module):
         super(VGDModel, self).__init__()
         
         self.output_size = 1
-        self.hidden_dim = [32] #[128,64,32] #[128, 64, 64]
+        self.hidden_dim = [128] #[128,64,32] #[128, 64, 64]
         self.kernel_size = (3,3)
         self.num_layers= 1 #3
         
@@ -85,16 +85,18 @@ class VGDModel(nn.Module):
                                       self.hidden_dim, 
                                       self.kernel_size, 
                                       self.num_layers,
+                                      dropout=0.2,
                                       batch_first=True
                             )
         
         
         
         self.fusion_layer = ConvLSTM(
-            input_dim=64, 
+            input_dim=160, 
             hidden_dim=[32],
             kernel_size=(3, 3),
             num_layers=1,
+            dropout=0.2,
             batch_first=True,
         )
         
@@ -141,7 +143,6 @@ class VGDModel(nn.Module):
 
         fused_features = torch.cat([dynamic_out, static_out], dim=2)
         
-          
         # Further fusion with a convolutional layer
         fused_output, _ = self.fusion_layer(fused_features)
         fused_output = fused_output[-1]

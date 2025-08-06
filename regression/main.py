@@ -29,106 +29,102 @@ from src.data.transforms.transforms import NormalizeTransform
 import cProfile
 from pstats import Stats
 
-training_data_path = "../data/training"
-
-
-with open(r"C:\Users\gmfet\vgd_italy\data\dynamic_feature.txt", "r") as f:
-    dynamic_feature_names = [line.strip() for line in f if line.strip()]
-
-with open(r"C:\Users\gmfet\vgd_italy\data\static_feature.txt", "r") as f:
-    static_feature_names = [sline.strip() for sline in f if sline.strip()]
-
-
-print("computing stats")
-# Instantiate to compute stats
-# computed_stats = VGDDataset.compute_stats(training_data_path)
-
-
-# transform_stats = {
-#     "init_args": {
-#         "means": {
-#             "static": computed_stats["mean"]["static"],
-#             "dynamic": computed_stats["mean"]["dynamic"],
-#             "target": computed_stats["mean"]["target"],
-#         },
-#         "stds": {
-#             "static": computed_stats["std"]["static"],
-#             "dynamic": computed_stats["std"]["dynamic"],
-#             "target": computed_stats["std"]["target"],
-#         },
-#         "features": {
-#             "dynamic": dynamic_feature_names,
-#             "static": static_feature_names,
-#             "target": "displacement",
-#         },
-#     }
-# }
-
-
-with open("config.yaml") as config_file:
-    config = yaml.safe_load(config_file)
-    # config["data"] = transform_stats
-    #
-# # Save updated config
-# with open("config.yaml", "w") as f:
-#     yaml.dump(config, f, sort_keys=False)
-
-dyn_mean = config["data"]["init_args"]["means"]["dynamic"]
-dyn_std = config["data"]["init_args"]["stds"]["dynamic"]
-static_mean = config["data"]["init_args"]["means"]["static"]
-static_std = config["data"]["init_args"]["stds"]["static"]
-target_mean = config["data"]["init_args"]["means"]["target"]
-target_std = config["data"]["init_args"]["stds"]["target"]
-
-
-# AOI_PATH = config['aoi_path']
-# aoi_gdf = gpd.read_file(AOI_PATH).to_crs("EPSG:3035")
-
-
-# Configuration
-checkpoint_path = config["model"]["model_path"]
-hidden_size = config["model"]["hidden_layers"]
-num_epochs = config["training"]["epochs"]
-learning_rate = config["optimizer"]["init_args"]["lr"]
-model_optimizer = config["optimizer"]["class_path"]
-batch_size = config["training"]["batch_size"]
-num_workers = config["training"]["num_workers"]
-device = config["model"]["device"]
-seq_len = config["training"]["seq_len"]
-output_size = config["model"]["output_size"]
-
-
-target_var = "displacement"
-
-
-pred_vars = [dynamic_feature_names, static_feature_names, target_var]
-
-# Define transformations
-dyn_transform = Compose(
-    [
-        NormalizeTransform(
-            dynamic_feature_names, dyn_mean, dyn_std, feature_type="dynamic"
-        )
-    ]
-)
-
-static_transform = Compose(
-    [
-        NormalizeTransform(
-            static_feature_names, static_mean, static_std, feature_type="static"
-        )
-    ]
-)
-
-target_transform = Compose(
-    [NormalizeTransform(target_var, target_mean, target_std, feature_type="target")]
-)
-
-
-data_transforms = [dyn_transform, static_transform, target_transform]
-
 def main(args):
-    continue_from_checkpoint = False
+
+    with open(r"C:\Users\gmfet\vgd_italy\data\dynamic_feature.txt", "r") as f:
+        dynamic_feature_names = [line.strip() for line in f if line.strip()]
+    
+    with open(r"C:\Users\gmfet\vgd_italy\data\static_feature.txt", "r") as f:
+        static_feature_names = [sline.strip() for sline in f if sline.strip()]
+    
+    
+    print("computing stats")
+    # # Instantiate to compute stats
+    # computed_stats = VGDDataset.compute_stats(training_data_path)
+    
+    
+    # transform_stats = {
+    #     "init_args": {
+    #         "means": {
+    #             "static": computed_stats["mean"]["static"],
+    #             "dynamic": computed_stats["mean"]["dynamic"],
+    #             "target": computed_stats["mean"]["target"],
+    #         },
+    #         "stds": {
+    #             "static": computed_stats["std"]["static"],
+    #             "dynamic": computed_stats["std"]["dynamic"],
+    #             "target": computed_stats["std"]["target"],
+    #         },
+    #         "features": {
+    #             "dynamic": dynamic_feature_names,
+    #             "static": static_feature_names,
+    #             "target": "displacement",
+    #         },
+    #     }
+    # }
+    
+    
+    with open("config.yaml") as config_file:
+        config = yaml.safe_load(config_file)
+        # config["data"] = transform_stats
+        #
+    # # Save updated config
+    # with open("config.yaml", "w") as f:
+    #     yaml.dump(config, f, sort_keys=False)
+    
+    dyn_mean = config["data"]["init_args"]["means"]["dynamic"]
+    dyn_std = config["data"]["init_args"]["stds"]["dynamic"]
+    static_mean = config["data"]["init_args"]["means"]["static"]
+    static_std = config["data"]["init_args"]["stds"]["static"]
+    target_mean = config["data"]["init_args"]["means"]["target"]
+    target_std = config["data"]["init_args"]["stds"]["target"]
+    
+    
+    
+    # Configuration
+    checkpoint_path = config["checkpoint"]["save_path"]
+    hidden_size = config["model"]["hidden_layers"]
+    num_epochs = config["training"]["epochs"]
+    learning_rate = config["optimizer"]["init_args"]["lr"]
+    model_optimizer = config["optimizer"]["class_path"]
+    batch_size = config["training"]["batch_size"]
+    num_workers = config["training"]["num_workers"]
+    device = config["model"]["device"]
+    seq_len = config["training"]["seq_len"]
+    output_size = config["model"]["output_size"]
+    
+    
+    target_var = "displacement"
+    
+    
+    pred_vars = [dynamic_feature_names, static_feature_names, target_var]
+    
+    # Define transformations
+    dyn_transform = Compose(
+        [
+            NormalizeTransform(
+                dynamic_feature_names, dyn_mean, dyn_std, feature_type="dynamic"
+            )
+        ]
+    )
+    
+    static_transform = Compose(
+        [
+            NormalizeTransform(
+                static_feature_names, static_mean, static_std, feature_type="static"
+            )
+        ]
+    )
+    
+    target_transform = Compose(
+        [NormalizeTransform(target_var, target_mean, target_std, feature_type="target")]
+    )
+    
+    
+    data_transforms = [dyn_transform, static_transform, target_transform]
+
+
+    # continue_from_checkpoint = False
 
     # Initialize the dataset for train, val, and test splits
     train_dataset = VGDDataset(
@@ -180,13 +176,22 @@ def main(args):
     model = VGDModel(pred_vars[0], pred_vars[1], hidden_size, output_size)
 
     # Load checkpoint or initialize training
-    if continue_from_checkpoint:
-        model, optimizer, start_epoch = load_checkpoint(
-            checkpoint_path, model, learning_rate, device, model_optimizer
-        )
-    else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-        start_epoch = 0
+    # if continue_from_checkpoint:
+    model, optimizer, start_epoch = load_checkpoint(
+        checkpoint_path, model, learning_rate, device, optimizer=model_optimizer
+    )
+    # else:
+    #     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
+    #     start_epoch = 0
+        
+        
+        
+    # print(model)
+    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    # print('Optimizer: ', optimizer)
+    # print('Start epoch: ', start_epoch)
+
 
     # Train the model
     train_model(
@@ -249,21 +254,21 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     args = parser.parse_args()
-    # main(args)
+    main(args)
     
-    do_profiling = True
-    profile_file = "profile_data.prof"
+    # do_profiling = True
+    # profile_file = "profile_data.prof"
     
-    if do_profiling:
-        with cProfile.Profile() as pr:
-            main(args)
+    # if do_profiling:
+    #     with cProfile.Profile() as pr:
+    #         main(args)
 
-        with open(profile_file, "w") as stream:
-            stats = Stats(pr, stream=stream)
-            stats.strip_dirs()
-            stats.sort_stats("time")
-            stats.dump_stats(profile_file)
-            stats.print_stats(5)
+    #     with open(profile_file, "w") as stream:
+    #         stats = Stats(pr, stream=stream)
+    #         stats.strip_dirs()
+    #         stats.sort_stats("time")
+    #         stats.dump_stats(profile_file)
+    #         stats.print_stats(5)
 
         # 2. Then, from the command line, run:
         # python -m  snakeviz profile_results.prof

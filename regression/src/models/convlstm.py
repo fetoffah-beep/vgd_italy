@@ -102,7 +102,7 @@ class ConvLSTM(nn.Module):
         >> h = last_states[0][0]  # 0 for layer index, 0 for h index
     """
 
-    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
+    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers, dropout, 
                  batch_first=False, bias=True, return_all_layers=False):
         super(ConvLSTM, self).__init__()
 
@@ -121,6 +121,11 @@ class ConvLSTM(nn.Module):
         self.batch_first = batch_first
         self.bias = bias
         self.return_all_layers = return_all_layers
+        
+        self.dropout_rate = dropout
+        self.dropout = nn.Dropout2d(self.dropout_rate) if self.dropout_rate > 0 else nn.Identity()
+
+
 
         cell_list = []
         for i in range(0, self.num_layers):
@@ -177,6 +182,9 @@ class ConvLSTM(nn.Module):
                 output_inner.append(h)
 
             layer_output = torch.stack(output_inner, dim=1)
+            if self.dropout_rate > 0 and layer_idx < self.num_layers - 1:
+                layer_output = self.dropout(layer_output)
+                
             cur_layer_input = layer_output
 
             layer_output_list.append(layer_output)

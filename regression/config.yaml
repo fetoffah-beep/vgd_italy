@@ -3,17 +3,14 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 10
-  batch_size: 32
+  batch_size: 1024
   num_workers: 0
   seq_len: 25
 model:
   name: CNN-ConvLSTM
   input_size: null
   output_size: 1
-  hidden_layers:
-  - 128
-  - 64
-  - 32
+  hidden_layers: [128, 64, 32]
   device: cuda
   model_path: null
 data:
@@ -79,9 +76,9 @@ data:
       - vol. water content at -33 kPa
       target: displacement
 optimizer:
-  class_path: torch.optim.Adam
+  class_path: torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
   init_args:
-    lr: 0.0001
+    lr: 0.000001
     weight_decay: 0.1
 lr_scheduler:
   class_path: ReduceLROnPlateau
@@ -93,7 +90,7 @@ logging:
   log_dir: null
   log_frequency: null
 checkpoint:
-  save_path: null
+  save_path: checkpoint.pt
   save_frequency: null
 augmentations:
   horizontal_flip: null
