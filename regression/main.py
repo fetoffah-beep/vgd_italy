@@ -12,6 +12,7 @@ import os
 import yaml
 import argparse
 import torch
+import wandb
 import geopandas as gpd
 from src.models.hybrid_model import VGDModel
 from src.data.dataloader import VGDDataLoader
@@ -29,12 +30,13 @@ from src.data.transforms.transforms import NormalizeTransform
 import cProfile
 from pstats import Stats
 
+
 def main(args):
 
-    with open(r"C:\Users\gmfet\vgd_italy\data\dynamic_feature.txt", "r") as f:
+    with open("../data/dynamic_feature.txt", "r") as f:
         dynamic_feature_names = [line.strip() for line in f if line.strip()]
     
-    with open(r"C:\Users\gmfet\vgd_italy\data\static_feature.txt", "r") as f:
+    with open("../data/static_feature.txt", "r") as f:
         static_feature_names = [sline.strip() for sline in f if sline.strip()]
     
     
@@ -79,7 +81,7 @@ def main(args):
     target_mean = config["data"]["init_args"]["means"]["target"]
     target_std = config["data"]["init_args"]["stds"]["target"]
     
-    
+   
     
     # Configuration
     checkpoint_path = config["checkpoint"]["save_path"]
@@ -93,7 +95,7 @@ def main(args):
     seq_len = config["training"]["seq_len"]
     output_size = config["model"]["output_size"]
     
-    
+
     target_var = "displacement"
     
     
@@ -128,21 +130,21 @@ def main(args):
 
     # Initialize the dataset for train, val, and test splits
     train_dataset = VGDDataset(
-        r"C:\Users\gmfet\vgd_italy\emilia_aoi\train_metadata.csv",
+        "../emilia_aoi/train_metadata.csv",
         "../data/training",
         data_transforms,
         split="train",
         seq_len=seq_len,
     )
     val_dataset = VGDDataset(
-        r"C:\Users\gmfet\vgd_italy\emilia_aoi\val_metadata.csv",
+        "../emilia_aoi/val_metadata.csv",
         "../data/validation",
         data_transforms,
         split="val",
         seq_len=seq_len,
     )
     test_dataset = VGDDataset(
-        r"C:\Users\gmfet\vgd_italy\emilia_aoi\test_metadata.csv",
+        "../emilia_aoi/test_metadata.csv",
         "../data/test",
         data_transforms,
         split="test",
@@ -169,7 +171,7 @@ def main(args):
 
     # # # Compute correlations
     print(
-        f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}, Test samples: {len(test_dataset)}"
+        f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}, Test samples: {len(test_dataset)} \n"
     )
 
     # Initialize the model
@@ -193,6 +195,7 @@ def main(args):
     # print('Start epoch: ', start_epoch)
 
 
+
     # Train the model
     train_model(
         model,
@@ -202,7 +205,7 @@ def main(args):
         learning_rate,
         start_epoch=start_epoch,
         num_epochs=num_epochs,
-        checkpoint_path=checkpoint_path,
+        checkpoint_path=checkpoint_path
     )
 
     # Test/Evaluate the model
@@ -255,6 +258,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     args = parser.parse_args()
     main(args)
+
     
     # do_profiling = True
     # profile_file = "profile_data.prof"

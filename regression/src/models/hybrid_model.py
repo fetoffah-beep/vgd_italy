@@ -93,14 +93,14 @@ class VGDModel(nn.Module):
         
         self.fusion_layer = ConvLSTM(
             input_dim=160, 
-            hidden_dim=[32],
+            hidden_dim=[128],
             kernel_size=(3, 3),
             num_layers=1,
             dropout=0.2,
             batch_first=True,
         )
         
-        self.final_layer = nn.Conv2d(in_channels=32,
+        self.final_layer = nn.Conv2d(in_channels=128,
                                       out_channels=self.output_size,
                                       kernel_size=3,
                                       padding=1)

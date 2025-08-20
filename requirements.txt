@@ -1,0 +1,10 @@
+
+
+
+thread
+torchaudio
+torchinfo==1.8.0
+torchvision
+tqdm==4.67.1
+wandb==0.21.1
+xarray

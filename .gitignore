@@ -18,7 +18,11 @@ output/
 regression/aoi/
 */*.pt
 */*.prof
+spyder
 
+data_pre_processing.pickle
+regression/models/logs/
+regression/wandb
 
 # Distribution / packaging
 .Python

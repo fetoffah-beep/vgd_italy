@@ -32,13 +32,13 @@ def tif2netcdf(tif_path, output_path, variable_name="variable", start_date="2017
         encoding = {var: comp for var in ds.data_vars}
         ds.to_netcdf(output_path, encoding=encoding)
         
-for feature in features:
-    tif_path= f"C:/Users/gmfet/vgd_italy/data/dynamic/{feature}.tif"
-    output_path= f'{feature}.nc'
-    variable_name = f'{feature}'
-    
-    tif2netcdf(tif_path, output_path, variable_name)
-    print(variable_name)
+# for feature in features:
+tif_path= r"C:\Users\gmfet\vgd_italy\data\dynamic\evapotranspiration.tif"
+output_path= r"C:\Users\gmfet\vgd_italy\data\dynamic\evapotranspiration.nc"
+variable_name = 'evapotranspiration'
+
+tif2netcdf(tif_path, output_path, variable_name)
+print(variable_name)
     
 
 
