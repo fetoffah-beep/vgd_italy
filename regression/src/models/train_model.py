@@ -20,7 +20,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # https://www.geeksforgeeks.org/l1l2-regularization-in-pytorch/
 
-def train_model(model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None, device=None):
+def train_model(target_transform, model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None):
     
     """
     Function to train the LSTM model.
@@ -35,7 +35,6 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
         learning_rate (float): The learning rate for the optimizer.
         checkpoint_path (str, optional): Path to save the model checkpoint.
         grad_clip (float, optional): Maximum gradient norm for clipping.
-        device (str or torch.device, optional): Device to run the training on ('cuda' or 'cpu').
     """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -44,14 +43,14 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
 
     # Loss function (Mean Squared Error for regression)
     # loss_fun = nn.MSELoss() #nn.SmoothL1Loss()
-    loss_fun = nn.SmoothL1Loss()
-    grad_clip = 1
+    loss_fun = nn.HuberLoss()
+    grad_clip = 2.5
     
     training_losses = []  
     validation_losses = []
     
     
-    log_interval = 3000  # validate every 10,000 steps
+    log_interval = 7000  # validate every 10,000 steps
     step = 0
     # scheduler = StepLR(optimizer, step_size=10, gamma=0.1)  
     best_val_loss = float('inf')
@@ -72,15 +71,24 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
                 targets = targets.unsqueeze(-1)
                 loss = loss_fun(outputs, targets)
     
-                # L2 regularization
-                l2_lambda = 0.001
-                l2_norm = sum(param.pow(2.0).sum() for param in model.parameters())
-                loss += l2_lambda * l2_norm
     
                 loss.backward()
-                if grad_clip is not None:
-                    nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                
+                # Inside your training loop
+                # total_norm = nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
+                # print(f"Gradient norm: {total_norm.item()}")
+
+
+
+                # if grad_clip is not None:
+                #     nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 optimizer.step()
+                
+
+
+
+
+
     
                 step += 1
                 training_loss += loss.item()
@@ -111,11 +119,16 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
                     # Concatenate predictions and targets
                     val_preds = np.concatenate(val_preds, axis=0).squeeze()
                     val_targets = np.concatenate(val_targ, axis=0).squeeze()
+                    
+                    val_preds = target_transform.inverse(val_preds)
+                    val_targets = target_transform.inverse(val_targets)
     
                     # Compute metrics
                     val_mae = mean_absolute_error(val_targets, val_preds)
-                    val_rmse = mean_squared_error(val_targets, val_preds)
+                    val_rmse = val_rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
                     val_r2 = r2_score(val_targets, val_preds)
+                    
+                    # Predict the mean of the target
                     
                     
                     run.log({
@@ -191,7 +204,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, start
 
     plot_losses(training_losses, validation_losses)
     
-    print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
+    # print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
 
 
 
@@ -203,8 +216,8 @@ def save_checkpoint(model, optimizer, epoch, checkpoint_path):
         'optimizer_state_dict': optimizer.state_dict(),
     }
     torch.save(checkpoint, checkpoint_path)
-    if wandb.run:
-        wandb.save("best_model.pt")
+    # if wandb.run:
+    #     wandb.save(checkpoint_path)
 
 
 def plot_losses(training_losses, validation_losses):
@@ -238,5 +251,3 @@ def autoregressive(model, initial_sequence, static_input, num_future_frames, dev
             current_sequence = torch.cat([current_sequence, next_frame], dim=1) # Append prediction to the sequence
 
     return torch.cat(future_frames, dim=1)
-
-

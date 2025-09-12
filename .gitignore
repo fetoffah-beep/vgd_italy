@@ -19,10 +19,13 @@ regression/aoi/
 */*.pt
 */*.prof
 spyder
+*/*.png
 
 data_pre_processing.pickle
 regression/models/logs/
 regression/wandb
+
+presentation/
 
 # Distribution / packaging
 .Python

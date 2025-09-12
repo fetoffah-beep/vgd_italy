@@ -41,8 +41,8 @@ def main(args):
     
     
     print("computing stats")
-    # # Instantiate to compute stats
-    # computed_stats = VGDDataset.compute_stats(training_data_path)
+
+    # computed_stats = VGDDataset.compute_stats("../data/training")
     
     
     # transform_stats = {
@@ -118,9 +118,10 @@ def main(args):
         ]
     )
     
-    target_transform = Compose(
-        [NormalizeTransform(target_var, target_mean, target_std, feature_type="target")]
-    )
+    target_transform = NormalizeTransform(target_var, target_mean, target_std, feature_type="target")
+    # # Compose(
+    #     []
+    # # )
     
     
     data_transforms = [dyn_transform, static_transform, target_transform]
@@ -131,30 +132,32 @@ def main(args):
     # Initialize the dataset for train, val, and test splits
     train_dataset = VGDDataset(
         "../emilia_aoi/train_metadata.csv",
-        "../data/training",
+        "../data",
+        seq_len,
         data_transforms,
-        split="train",
-        seq_len=seq_len,
+        split="train"
     )
     val_dataset = VGDDataset(
         "../emilia_aoi/val_metadata.csv",
-        "../data/validation",
+        "../data",
+        seq_len,
         data_transforms,
-        split="val",
-        seq_len=seq_len,
+        split="val"
     )
     test_dataset = VGDDataset(
         "../emilia_aoi/test_metadata.csv",
-        "../data/test",
+        "../data",
+        seq_len,
         data_transforms,
         split="test",
-        seq_len=seq_len,
     )
-
+    
+    
     # Create DataLoaders for batching
     train_loader = VGDDataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True
     )
+    
     val_loader = VGDDataLoader(
         val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False
     )
@@ -188,16 +191,17 @@ def main(args):
         
         
         
-    # print(model)
-    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    # print('Optimizer: ', optimizer)
-    # print('Start epoch: ', start_epoch)
+    # # print(model)
+    # # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    # # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    # # print('Optimizer: ', optimizer)
+    # # print('Start epoch: ', start_epoch)
 
 
 
     # Train the model
     train_model(
+        target_transform,
         model,
         train_loader,
         val_loader,
@@ -205,7 +209,8 @@ def main(args):
         learning_rate,
         start_epoch=start_epoch,
         num_epochs=num_epochs,
-        checkpoint_path=checkpoint_path
+        checkpoint_path=checkpoint_path,
+
     )
 
     # Test/Evaluate the model
@@ -232,22 +237,22 @@ def main(args):
     # Visualize results
     plot_results(ground_truth, predictions, residuals)
 
-    # # Perform SHAP analysis for train, validation, and test sets
-    # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # shap_plot(train_shap)
+    # # # Perform SHAP analysis for train, validation, and test sets
+    # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # shap_plot(train_shap)
 
-    # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # shap_plot(val_shap)
+    # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # shap_plot(val_shap)
 
-    # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
-    # shap_plot(test_shap)
+    # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # shap_plot(test_shap)
 
-    # Perform LIME analysis for train, validation, and test sets
-    # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # Perform LIME analysis for train, validation, and test sets
+    # # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
 
-    print("Time taken:", time.time() - start_time)
+    # print("Time taken:", time.time() - start_time)
 
 
 if __name__ == "__main__":
