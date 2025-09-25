@@ -40,30 +40,7 @@ def main(args):
         static_feature_names = [sline.strip() for sline in f if sline.strip()]
     
     
-    print("computing stats")
 
-    # computed_stats = VGDDataset.compute_stats("../data/training")
-    
-    
-    # transform_stats = {
-    #     "init_args": {
-    #         "means": {
-    #             "static": computed_stats["mean"]["static"],
-    #             "dynamic": computed_stats["mean"]["dynamic"],
-    #             "target": computed_stats["mean"]["target"],
-    #         },
-    #         "stds": {
-    #             "static": computed_stats["std"]["static"],
-    #             "dynamic": computed_stats["std"]["dynamic"],
-    #             "target": computed_stats["std"]["target"],
-    #         },
-    #         "features": {
-    #             "dynamic": dynamic_feature_names,
-    #             "static": static_feature_names,
-    #             "target": "displacement",
-    #         },
-    #     }
-    # }
     
     
     with open("config.yaml") as config_file:
@@ -74,12 +51,12 @@ def main(args):
     # with open("config.yaml", "w") as f:
     #     yaml.dump(config, f, sort_keys=False)
     
-    dyn_mean = config["data"]["init_args"]["means"]["dynamic"]
-    dyn_std = config["data"]["init_args"]["stds"]["dynamic"]
-    static_mean = config["data"]["init_args"]["means"]["static"]
-    static_std = config["data"]["init_args"]["stds"]["static"]
-    target_mean = config["data"]["init_args"]["means"]["target"]
-    target_std = config["data"]["init_args"]["stds"]["target"]
+    dyn_mean = config["data"]["mean"]["dynamic"]
+    dyn_std = config["data"]["std"]["dynamic"]
+    static_mean = config["data"]["mean"]["static"]
+    static_std = config["data"]["std"]["static"]
+    target_mean = config["data"]["mean"]["target"]
+    target_std = config["data"]["std"]["target"]
     
    
     
@@ -101,81 +78,72 @@ def main(args):
     
     pred_vars = [dynamic_feature_names, static_feature_names, target_var]
     
-    # Define transformations
-    dyn_transform = Compose(
-        [
-            NormalizeTransform(
-                dynamic_feature_names, dyn_mean, dyn_std, feature_type="dynamic"
-            )
-        ]
-    )
+    # # Define transformations
+    # dyn_transform = Compose(
+    #     [
+    #         NormalizeTransform(
+    #             dynamic_feature_names, dyn_mean, dyn_std, feature_type="dynamic"
+    #         )
+    #     ]
+    # )
     
-    static_transform = Compose(
-        [
-            NormalizeTransform(
-                static_feature_names, static_mean, static_std, feature_type="static"
-            )
-        ]
-    )
+    # static_transform = Compose(
+    #     [
+    #         NormalizeTransform(
+    #             static_feature_names, static_mean, static_std, feature_type="static"
+    #         )
+    #     ]
+    # )
     
-    target_transform = NormalizeTransform(target_var, target_mean, target_std, feature_type="target")
-    # # Compose(
-    #     []
-    # # )
+    # target_transform = NormalizeTransform(target_var, target_mean, target_std, feature_type="target")
+    # # # Compose(
+    # #     []
+    # # # )
     
     
-    data_transforms = [dyn_transform, static_transform, target_transform]
+    # data_transforms = [dyn_transform, static_transform, target_transform]
 
 
     # continue_from_checkpoint = False
 
+
     # Initialize the dataset for train, val, and test splits
-    train_dataset = VGDDataset(
-        "../emilia_aoi/train_metadata.csv",
-        "../data",
-        seq_len,
-        data_transforms,
-        split="train"
-    )
-    val_dataset = VGDDataset(
-        "../emilia_aoi/val_metadata.csv",
-        "../data",
-        seq_len,
-        data_transforms,
-        split="val"
-    )
-    test_dataset = VGDDataset(
-        "../emilia_aoi/test_metadata.csv",
-        "../data",
-        seq_len,
-        data_transforms,
-        split="test",
-    )
-    
-    
-    # Create DataLoaders for batching
-    train_loader = VGDDataLoader(
-        train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True
-    )
-    
-    val_loader = VGDDataLoader(
-        val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False
-    )
-    test_loader = VGDDataLoader(
-        test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False
-    )
+    train_dataset = VGDDataset('training',      "../emilia_aoi/train_metadata.csv", 'config.yaml', "../data", seq_len, time_split=True)
+    val_dataset   = VGDDataset('validation',    "../emilia_aoi/val_metadata.csv",   'config.yaml', "../data", seq_len, time_split=True)
+    test_dataset  = VGDDataset('test',     "../emilia_aoi/test_metadata.csv",  'config.yaml', "../data", seq_len, time_split=True)
+
+    # Example: print the first sample
+    sample = test_dataset[0]
+
+    print("Sample keys:", sample.keys())
+    print("\nStatic features:")
+    for k, v in sample['predictors']['static'].items():
+        print(f"{k}: {v.shape}")
+
+    print("\nDynamic features:")
+    for k, v in sample['predictors']['dynamic'].items():
+        print(f"{k}: {v.shape}")
+
+    print("\nTarget:", sample['target'])
+    print("\nCoordinates:", sample['coords'])
+
+
+
+
+
+
+
+    # Create DataLoaders for batching and shuffling
+    train_loader = VGDDataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+    val_loader   = VGDDataLoader(val_dataset,   batch_size=batch_size, num_workers=num_workers, shuffle=False)
+    test_loader  = VGDDataLoader(test_dataset,  batch_size=batch_size, num_workers=num_workers, shuffle=False)
 
     # Get the data loaders for train, validation, and test sets
-    train_loader, val_loader, test_loader = (
-        train_loader.data_loader,
-        val_loader.data_loader,
-        test_loader.data_loader,
-    )
+    train_loader, val_loader, test_loader = (dl.data_loader for dl in (train_loader, val_loader, test_loader))
+
 
     # # # Compute correlations
-    print(
-        f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}, Test samples: {len(test_dataset)} \n"
-    )
+    print(f"Train samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}, Test samples: {len(test_dataset)} \n")
 
     # Initialize the model
     model = VGDModel(pred_vars[0], pred_vars[1], hidden_size, output_size)
@@ -199,43 +167,43 @@ def main(args):
 
 
 
-    # Train the model
-    train_model(
-        target_transform,
-        model,
-        train_loader,
-        val_loader,
-        optimizer,
-        learning_rate,
-        start_epoch=start_epoch,
-        num_epochs=num_epochs,
-        checkpoint_path=checkpoint_path,
+    # # Train the model
+    # train_model(
+    #     target_transform,
+    #     model,
+    #     train_loader,
+    #     val_loader,
+    #     optimizer,
+    #     learning_rate,
+    #     start_epoch=start_epoch,
+    #     num_epochs=num_epochs,
+    #     checkpoint_path=checkpoint_path,
 
-    )
+    # )
 
-    # Test/Evaluate the model
-    print("Training complete. Evaluating the model on the test set.")
-    model.eval()
+    # # Test/Evaluate the model
+    # print("Training complete. Evaluating the model on the test set.")
+    # model.eval()
 
-    results = evaluate_model(model, test_loader, device=device)
-    predictions, ground_truth, residuals = (
-        results["predictions"],
-        results["ground_truth"],
-        results["residuals"],
-    )
+    # results = evaluate_model(model, test_loader, device=device)
+    # predictions, ground_truth, residuals = (
+    #     results["predictions"],
+    #     results["ground_truth"],
+    #     results["residuals"],
+    # )
 
-    # Compute and display statistics
-    pred_stats = get_summary_stats(predictions)
-    gt_stats = get_summary_stats(ground_truth)
-    res_stats = get_summary_stats(residuals)
+    # # Compute and display statistics
+    # pred_stats = get_summary_stats(predictions)
+    # gt_stats = get_summary_stats(ground_truth)
+    # res_stats = get_summary_stats(residuals)
 
-    print("\n=== Model Evaluation Summary ===")
-    display_summary_stats(pred_stats, label="Predictions")
-    display_summary_stats(gt_stats, label="Ground Truth")
-    display_summary_stats(res_stats, label="Residuals")
+    # print("\n=== Model Evaluation Summary ===")
+    # display_summary_stats(pred_stats, label="Predictions")
+    # display_summary_stats(gt_stats, label="Ground Truth")
+    # display_summary_stats(res_stats, label="Residuals")
 
-    # Visualize results
-    plot_results(ground_truth, predictions, residuals)
+    # # Visualize results
+    # plot_results(ground_truth, predictions, residuals)
 
     # # # Perform SHAP analysis for train, validation, and test sets
     # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")

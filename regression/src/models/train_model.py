@@ -77,19 +77,8 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
                 # Inside your training loop
                 # total_norm = nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
                 # print(f"Gradient norm: {total_norm.item()}")
-
-
-
-                # if grad_clip is not None:
-                #     nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
                 optimizer.step()
                 
-
-
-
-
-
-    
                 step += 1
                 training_loss += loss.item()
                 interval_loss_accum += loss.item()
