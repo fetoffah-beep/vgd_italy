@@ -2,10 +2,10 @@ aoi_path: r"C:\Users\gmfet\vgd_italy\emilia_aoi\Emilia-Romagna.shp"
 training:
   identifier: vgd
   usecase: displacement
-  epochs: 10
+  epochs: 2
   batch_size: 258
   num_workers: 0
-  seq_len: 25
+  seq_len: 50
 model:
   name: CNN-ConvLSTM
   input_size: null
@@ -17,98 +17,138 @@ model:
   device: cuda
   model_path: null
 data:
-  mean:
-    static:
-      bulk_density: 99.72612762451172
-      clay_content: 289.37701416015625
-      dem: 163.34800720214844
-      genua: 0.005820362363010645
-      ksat: 47.609561920166016
-      sand: 130.45492553710938
-      silt: 367.8307800292969
-      slope: 3.661935329437256
-      soil_organic_carbon: 428.380859375
-      topo_wetness_index: 4.2401885986328125
-      vol water content at -10: 315.5976257324219
-      vol water content at -1500 kPa: 165.74066162109375
-      vol water content at -33 kPa: 272.01800537109375
-    dynamic:
-      # drought_code: 20.796695709228516
-      precipitation: 0.8245198130607605
-      seismic_magnitude: 5.981808135402389e-05
-      ssm: 8.681095123291016
-      temperature: 0.657178521156311
-      twsan: -3.425330877304077
-    target: -5.6704888343811035
-  std:
-    static:
-      bulk_density: 47.61176681518555
-      clay_content: 142.67604064941406
-      dem: 262.36126708984375
-      genua: 0.0010723827872425318
-      ksat: 9.601518630981445
-      sand: 86.9447250366211
-      silt: 176.5665740966797
-      slope: 5.287593364715576
-      soil_organic_carbon: 246.3369598388672
-      topo_wetness_index: 1.2608152627944946
-      vol water content at -10: 150.08859252929688
-      vol water content at -1500 kPa: 79.48150634765625
-      vol water content at -33 kPa: 129.2298126220703
-    dynamic:
-      drought_code: 103.2440185546875
-      precipitation: 4.558355331420898
-      seismic_magnitude: 0.0032310467213392258
-      ssm: 33.33436965942383
-      temperature: 4.559828281402588
-      twsan: 0.776598334312439
-    target: 9.522238731384277
-  min:
-    static:
-      bulk_density: 0.0
-      clay_content: 0.0
-      dem: -10.042336463928223
-      genua: 0.004019205458462238
-      ksat: 31.105897903442383
-      sand: 0.0
-      silt: 0.0
-      slope: 0.0
-      soil_organic_carbon: 0.0
-      topo_wetness_index: 0.5133386254310608
-      vol water content at -10: 0.0
-      vol water content at -1500 kPa: 0.0
-      vol water content at -33 kPa: 0.0
-    dynamic:
-      drought_code: 0.0
-      precipitation: 0.0
-      seismic_magnitude: 0.0
-      ssm: 0.0
-      temperature: -22.514129638671875
-      twsan: -5.5725226402282715
-    target: -246.5
-  max:
-    static:
-      bulk_density: 141.45956420898438
-      clay_content: 557.8878784179688
-      dem: 2159.28857421875
-      genua: 0.011835137382149696
-      ksat: 107.80093383789062
-      sand: 548.6846923828125
-      silt: 613.3402099609375
-      slope: 48.51261520385742
-      soil_organic_carbon: 1566.967529296875
-      topo_wetness_index: 7.600902557373047
-      vol water content at -10: 466.10009765625
-      vol water content at -1500 kPa: 289.224853515625
-      vol water content at -33 kPa: 400.4207458496094
-    dynamic:
-      drought_code: 778.4448852539062
-      precipitation: 121.0
-      seismic_magnitude: 2.0
-      ssm: 126.5
-      temperature: 35.40116500854492
-      twsan: -1.3438539505004883
-    target: 70.30000305175781
+  categories:
+    lithology:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 20
+    lulc:
+    - 10
+    - 20
+    - 30
+    - 40
+    - 50
+    - 60
+    - 70
+    - 80
+    - 90
+    - 95
+    - 100
+  stats:
+    mean:
+      static:
+        bulk_density: 99.7342758178711
+        clay_content: 289.3764953613281
+        dem: 163.35195922851562
+        genua: 0.005820461083203554
+        ksat: 47.61066436767578
+        lithology: None
+        lulc: None
+        population_density_2020_1km: 782.9249267578125
+        sand: 130.4551544189453
+        silt: 367.8340759277344
+        slope: 3.6620254516601562
+        soil_organic_carbon: 428.3838806152344
+        topo_wetness_index: 4.240095138549805
+        vol water content at -10: 315.5993957519531
+        vol water content at -1500 kPa: 165.74119567871094
+        vol water content at -33 kPa: 272.0248107910156
+      dynamic:
+        drought_code: 20.796695709228516
+        precipitation: 0.8245198130607605
+        seismic_magnitude: 5.981808135402389e-05
+        ssm: 8.681095123291016
+        temperature: 0.657178521156311
+        twsan: -1.9043378829956055
+      target: -5.6704888343811035
+    std:
+      static:
+        bulk_density: 47.62698745727539
+        clay_content: 142.64483642578125
+        dem: 262.3697509765625
+        genua: 0.0010724844178184867
+        ksat: 9.602312088012695
+        population_density_2020_1km: 1521.71044921875
+        sand: 86.97979736328125
+        silt: 176.58908081054688
+        slope: 5.287639141082764
+        soil_organic_carbon: 246.3234405517578
+        topo_wetness_index: 1.2608166933059692
+        vol water content at -10: 150.04393005371094
+        vol water content at -1500 kPa: 79.476318359375
+        vol water content at -33 kPa: 129.19691467285156
+      dynamic:
+        drought_code: 103.2440185546875
+        precipitation: 4.558355331420898
+        seismic_magnitude: 0.0032310467213392258
+        ssm: 33.33436965942383
+        temperature: 4.559828281402588
+        twsan: 1.119337558746338
+      target: 9.522238731384277
+    min:
+      static:
+        bulk_density: 0.0
+        clay_content: 0.0
+        dem: -10.04233615921024
+        genua: 0.004019205405045377
+        ksat: 31.105897678366386
+        population_density_2020_1km: 0.0
+        sand: 0.0
+        silt: 0.0
+        slope: 0.0
+        soil_organic_carbon: 0.0
+        topo_wetness_index: 0.51333863398212
+        vol water content at -10: 0.0
+        vol water content at -1500 kPa: 0.0
+        vol water content at -33 kPa: 0.0
+      dynamic:
+        drought_code: 0.0
+        precipitation: 0.0
+        seismic_magnitude: 0.0
+        ssm: 0.0
+        temperature: -22.514129638671875
+        twsan: -5.5725226402282715
+      target: -246.5
+    max:
+      static:
+        bulk_density: 141.45956117566982
+        clay_content: 557.8878713993064
+        dem: 2159.288511715335
+        genua: 0.01183513781892867
+        ksat: 107.80093022389784
+        population_density_2020_1km: 18228.511354503684
+        sand: 548.6847115175156
+        silt: 613.3401915143922
+        slope: 48.51261520385742
+        soil_organic_carbon: 1566.9674823620835
+        topo_wetness_index: 7.600902557373049
+        vol water content at -10: 466.10009898935886
+        vol water content at -1500 kPa: 289.2248439285827
+        vol water content at -33 kPa: 400.42075596362645
+      dynamic:
+        drought_code: 778.4448852539062
+        precipitation: 121.0
+        seismic_magnitude: 2.0
+        ssm: 126.5
+        temperature: 35.40116500854492
+        twsan: 0.31184667348861694
+      target: 70.30000305175781
 optimizer:
   class_path: torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
   init_args:

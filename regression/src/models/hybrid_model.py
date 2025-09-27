@@ -60,8 +60,8 @@ class VGDModel(nn.Module):
         self.kernel_size = (3,3)
         self.num_layers= 1 #3
         
-        self.num_static_features = len(static_feat)
-        self.num_dyn_features = len(dyn_feat)
+        self.num_static_features = static_feat
+        self.num_dyn_features = dyn_feat
         
         
         

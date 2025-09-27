@@ -4,6 +4,7 @@ import matplotlib.cm as cm
 import numpy as np
 import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from tqdm import tqdm
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -26,9 +27,10 @@ def evaluate_model(model, test_loader, device="cpu", show_plot=True):
     cmap = cm.get_cmap('viridis')
     
     with torch.no_grad():  # Disable gradient computation
-        for dyn_inputs, static_input, targets, _, _ in test_loader:
+        for sample in tqdm(test_loader):
+            dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
-                        
+                               
             outputs = model(dyn_inputs, static_input).squeeze()
             predictions.extend(outputs.cpu().numpy().flatten().tolist())
             ground_truth.extend(targets.cpu().numpy().flatten().tolist())

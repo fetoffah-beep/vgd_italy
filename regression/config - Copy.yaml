@@ -1,0 +1,139 @@
+aoi_path: r"C:\Users\gmfet\vgd_italy\emilia_aoi\Emilia-Romagna.shp"
+training:
+  identifier: vgd
+  usecase: displacement
+  epochs: 10
+  batch_size: 258
+  num_workers: 0
+  seq_len: 25
+model:
+  name: CNN-ConvLSTM
+  input_size: null
+  output_size: 1
+  hidden_layers:
+  - 128
+  - 64
+  - 32
+  device: cuda
+  model_path: null
+data:
+  categories:
+      lithology: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20]
+      lulc: [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+  stats:
+      mean:
+        static:
+          bulk_density: 99.72612762451172
+          clay_content: 289.37701416015625
+          dem: 163.34800720214844
+          genua: 0.005820362363010645
+          ksat: 47.609561920166016
+          lithology: categorical feature
+          lulc: categorical feature
+          population_density_2020_1km: categorical feature
+          sand: 130.45492553710938
+          silt: 367.8307800292969
+          slope: 3.661935329437256
+          soil_organic_carbon: 428.380859375
+          topo_wetness_index: 4.2401885986328125
+          vol water content at -10: 315.5976257324219
+          vol water content at -1500 kPa: 165.74066162109375
+          vol water content at -33 kPa: 272.01800537109375
+        dynamic:
+          drought_code: 20.796695709228516
+          precipitation: 0.8245198130607605
+          seismic_magnitude: 5.981808135402389e-05
+          ssm: 8.681095123291016
+          temperature: 0.657178521156311
+          twsan: -1.9043378829956055
+        target: -5.6704888343811035
+      std:
+        static:
+          bulk_density: 47.61176681518555
+          clay_content: 142.67604064941406
+          dem: 262.36126708984375
+          genua: 0.0010723827872425318
+          ksat: 9.601518630981445
+          sand: 86.9447250366211
+          silt: 176.5665740966797
+          slope: 5.287593364715576
+          soil_organic_carbon: 246.3369598388672
+          topo_wetness_index: 1.2608152627944946
+          vol water content at -10: 150.08859252929688
+          vol water content at -1500 kPa: 79.48150634765625
+          vol water content at -33 kPa: 129.2298126220703
+        dynamic:
+          drought_code: 103.2440185546875
+          precipitation: 4.558355331420898
+          seismic_magnitude: 0.0032310467213392258
+          ssm: 33.33436965942383
+          temperature: 4.559828281402588
+          twsan: 1.119337558746338
+        target: 9.522238731384277
+      min:
+        static:
+          bulk_density: 0.0
+          clay_content: 0.0
+          dem: -10.042336463928223
+          genua: 0.004019205458462238
+          ksat: 31.105897903442383
+          sand: 0.0
+          silt: 0.0
+          slope: 0.0
+          soil_organic_carbon: 0.0
+          topo_wetness_index: 0.5133386254310608
+          vol water content at -10: 0.0
+          vol water content at -1500 kPa: 0.0
+          vol water content at -33 kPa: 0.0
+        dynamic:
+          drought_code: 0.0
+          precipitation: 0.0
+          seismic_magnitude: 0.0
+          ssm: 0.0
+          temperature: -22.514129638671875
+          twsan: -5.5725226402282715
+        target: -246.5
+      max:
+        static:
+          bulk_density: 141.45956420898438
+          clay_content: 557.8878784179688
+          dem: 2159.28857421875
+          genua: 0.011835137382149696
+          ksat: 107.80093383789062
+          sand: 548.6846923828125
+          silt: 613.3402099609375
+          slope: 48.51261520385742
+          soil_organic_carbon: 1566.967529296875
+          topo_wetness_index: 7.600902557373047
+          vol water content at -10: 466.10009765625
+          vol water content at -1500 kPa: 289.224853515625
+          vol water content at -33 kPa: 400.4207458496094
+        dynamic:
+          drought_code: 778.4448852539062
+          precipitation: 121.0
+          seismic_magnitude: 2.0
+          ssm: 126.5
+          temperature: 35.40116500854492
+          twsan: 0.31184667348861694
+        target: 70.30000305175781
+optimizer:
+  class_path: torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
+  init_args:
+    lr: 1.0e-06
+    weight_decay: 0.1
+lr_scheduler:
+  class_path: ReduceLROnPlateau
+  init_args:
+    monitor: val/loss
+    factor: 0.5
+    patience: 5
+logging:
+  log_dir: null
+  log_frequency: null
+checkpoint:
+  save_path: checkpoint.pt
+  save_frequency: null
+augmentations:
+  horizontal_flip: null
+  random_crop: null
+  resize: null

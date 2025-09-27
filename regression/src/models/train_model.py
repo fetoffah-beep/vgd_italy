@@ -10,6 +10,7 @@ import wandb
 
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import yaml
 
 from src.utils.logger import log_message
 
@@ -20,7 +21,7 @@ timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # https://www.geeksforgeeks.org/l1l2-regularization-in-pytorch/
 
-def train_model(target_transform, model, train_loader, val_loader, optimizer, learning_rate, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None):
+def train_model(model, train_loader, val_loader, optimizer, learning_rate, config_path, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None):
     
     """
     Function to train the LSTM model.
@@ -63,8 +64,16 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
             training_loss = 0.0
             interval_loss_accum = 0.0
             interval_step_count = 0
-    
-            for dyn_inputs, static_input, targets, _, _ in tqdm(train_loader):
+
+            
+            with open(config_path) as config_file:
+                config = yaml.safe_load(config_file)
+            baseline_pred = config["data"]['stats']["mean"]["target"]
+
+
+
+            for sample in tqdm(train_loader):
+                dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
                 dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                 optimizer.zero_grad()
                 outputs = model(dyn_inputs, static_input)
@@ -92,8 +101,11 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
                     val_preds = []
                     val_targ = []
                     with torch.no_grad():
-                        for val_dyn, val_static, val_targets, _, _ in val_loader:
+                        for val_sample in tqdm(val_loader):
+                            # sample = {'predictors': {'static': {}, 'dynamic': {}}, 'target': None, 'coords': (easting, northing)}
+                            val_dyn, val_static, val_targets = val_sample['dynamic'], val_sample['static'], val_sample['target']
                             val_dyn, val_static, val_targets = val_dyn.to(device), val_static.to(device), val_targets.to(device)
+                
                             val_outputs = model(val_dyn, val_static)
                             val_targets = val_targets.unsqueeze(-1)
                             vloss = loss_fun(val_outputs, val_targets)
@@ -109,9 +121,6 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
                     val_preds = np.concatenate(val_preds, axis=0).squeeze()
                     val_targets = np.concatenate(val_targ, axis=0).squeeze()
                     
-                    val_preds = target_transform.inverse(val_preds)
-                    val_targets = target_transform.inverse(val_targets)
-    
                     # Compute metrics
                     val_mae = mean_absolute_error(val_targets, val_preds)
                     val_rmse = val_rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
@@ -127,6 +136,14 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
                             "validation/RMSE": val_rmse,
                             "validation/R²": val_r2,
                         }, step=step)
+
+
+                    # Mean baseline
+                    baseline_mae = mean_absolute_error(val_targets, np.full_like(val_targets, baseline_pred))
+                    baseline_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, baseline_pred)))
+                    baseline_r2 = r2_score(val_targets, np.full_like(val_targets, baseline_pred))
+                    log_message(f"\n Baseline stats \n MAE: {baseline_mae:.4f}, RMSE: {baseline_rmse:.4f}, R²: {baseline_r2:.4f}", log_f)
+
                     
                     
                     
@@ -152,42 +169,44 @@ def train_model(target_transform, model, train_loader, val_loader, optimizer, le
                             return
     
     
-            # End of epoch: average training loss
-            training_loss /= len(train_loader)
-            model.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                for dyn_inputs, static_input, targets, _, _ in val_loader:
-                    dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
-                    val_outputs = model(dyn_inputs, static_input)
-                    targets = targets.unsqueeze(-1)
-                    vloss = loss_fun(val_outputs, targets)
-                    val_loss += vloss.item()
-            val_loss /= len(val_loader)
+            # # End of epoch: average training loss
+            # training_loss /= len(train_loader)
+            # model.eval()
+            # val_loss = 0.0
+            # with torch.no_grad():
+            #     for val_sample in tqdm(val_loader):
+            #         # sample = {'predictors': {'static': {}, 'dynamic': {}}, 'target': None, 'coords': (easting, northing)}
+            #         val_dyn, val_static, val_targets = val_sample['dynamic'], val_sample['static'], val_sample['target']
+            #         val_dyn, val_static, val_targets = val_dyn.to(device), val_static.to(device), val_targets.to(device)
+            #         val_outputs = model(val_dyn, val_static)
+            #         val_targets = targets.unsqueeze(-1)
+            #         vloss = loss_fun(val_outputs, val_targets)
+            #         val_loss += vloss.item()
+            # val_loss /= len(val_loader)
     
-            training_losses.append(training_loss)
-            validation_losses.append(val_loss)
+            # training_losses.append(training_loss)
+            # validation_losses.append(val_loss)
     
-            log_message(f"\n Epoch {epoch + 1} | Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}", log_f)
+            # log_message(f"\n Epoch {epoch + 1} | Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}", log_f)
             
-            run.log({
-                    "training_loss": training_loss,
-                    "val_loss": val_loss,
-                }, step=epoch+1)
+            # run.log({
+            #         "training_loss": training_loss,
+            #         "val_loss": val_loss,
+            #     }, step=epoch+1)
     
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
-                if checkpoint_path:
-                    save_checkpoint(model, optimizer, epoch, f"{checkpoint_path}_epoch_{timestamp}.pt")
-            else:
-                patience_counter += 1
-                if patience_counter >= patience:
-                    log_message(f"\n Early stopping at epoch {epoch + 1}", log_f)
-                    plot_losses(training_losses, validation_losses)
-                    return
+            # if val_loss < best_val_loss:
+            #     best_val_loss = val_loss
+            #     patience_counter = 0
+            #     if checkpoint_path:
+            #         save_checkpoint(model, optimizer, epoch, f"{checkpoint_path}_epoch_{timestamp}.pt")
+            # else:
+            #     patience_counter += 1
+            #     if patience_counter >= patience:
+            #         log_message(f"\n Early stopping at epoch {epoch + 1}", log_f)
+            #         plot_losses(training_losses, validation_losses)
+            #         return
     
-            # scheduler.step()
+            # # scheduler.step()
     
 
 

@@ -11,6 +11,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from tqdm import tqdm
 import xarray as xr
 
 
@@ -35,12 +36,6 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
     # Initialize the explainer with the model and the device-correct sample data
     explainer = shap.DeepExplainer(model, explainer_data)
-    
-    
-    
-    
-    
-    
     # explainer = shap.DeepExplainer(model, next(iter(data_loader))[:2]) #get a sample batch for the explainer
 
 
@@ -51,10 +46,14 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     
     shap_data = []
-    
-    for dyn_inputs, static_input, targets, eastings, northings in data_loader:
+    for sample in tqdm(data_loader):
+        dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
         dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
-         
+        eastings, northings = sample['coords']
+
+
+
+
         shap_values = explainer.shap_values([dyn_inputs, static_input])
         
         for output_idx in range(len(shap_values)):

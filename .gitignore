@@ -7,25 +7,42 @@ __pycache__/
 *.so
 .cache
 
-
 docs/
-data/
 working_package/
-data_pre_processing/*.csv
 emilia_aoi/
 italy_aoi/
-output/
 regression/aoi/
 */*.pt
 */*.prof
 spyder
-*/*.png
+*.png
+*.tif
+*.gpkg
+*.nc
+*.csv
+*.npy
+*.ppt*
+*.pdf
+*.docx
+
+
+
+
 
 data_pre_processing.pickle
 regression/models/logs/
 regression/wandb
 
 presentation/
+
+
+*/*.zip
+*/output/
+*/data_exploration.py
+*/features/
+*/utils/logger.py
+*/eda.ipynb
+
 
 # Distribution / packaging
 .Python

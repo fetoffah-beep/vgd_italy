@@ -39,8 +39,11 @@ def compute_lime(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
     # Extract all data from the loader
     all_dyn_inputs, all_static_inputs = [], []
-    for dyn_inputs, static_input, targets, _, _ in data_loader:
+    for sample in tqdm(data_loader):
+        dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
         dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+             
+
         all_dyn_inputs.append(dyn_inputs.cpu().numpy())
         all_static_inputs.append(static_input.cpu().numpy())
 

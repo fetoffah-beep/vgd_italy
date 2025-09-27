@@ -1,0 +1,3 @@
+Precipitation
+drought_code
+temperature

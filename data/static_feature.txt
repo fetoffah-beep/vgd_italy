@@ -1,0 +1,13 @@
+bulk_density
+clay_content
+dem
+land_cover
+population_density_2020_1km
+sand
+silt
+slope
+soil_organic_carbon
+topo_wetness_index
+vol. water content at -10
+vol. water content at -1500 kPa
+vol. water content at -33 kPa
