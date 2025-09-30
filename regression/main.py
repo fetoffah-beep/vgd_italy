@@ -88,7 +88,7 @@ def main(args):
     test_dataset  = VGDDataset('test',          "../emilia_aoi/test_metadata.csv",  'config.yaml', "../data", seq_len, time_split=False)
 
     # Example: print the first sample
-    # sample = test_dataset[0]
+    sample = test_dataset[0]
     
     # print("Sample keys:", sample.keys())
     # print("\nStatic features:")
@@ -152,46 +152,46 @@ def main(args):
     )
     
 
-    # Test/Evaluate the model
-    print("Training complete. Evaluating the model on the test set.")
-    model.eval()
+    # # Test/Evaluate the model
+    # print("Training complete. Evaluating the model on the test set.")
+    # model.eval()
 
-    results = evaluate_model(model, test_loader, device=device)
-    predictions, ground_truth, residuals = (
-        results["predictions"],
-        results["ground_truth"],
-        results["residuals"],
-    )
+    # results = evaluate_model(model, test_loader, device=device)
+    # predictions, ground_truth, residuals = (
+    #     results["predictions"],
+    #     results["ground_truth"],
+    #     results["residuals"],
+    # )
 
-    # Compute and display statistics
-    pred_stats = get_summary_stats(predictions)
-    gt_stats = get_summary_stats(ground_truth)
-    res_stats = get_summary_stats(residuals)
+    # # Compute and display statistics
+    # pred_stats = get_summary_stats(predictions)
+    # gt_stats = get_summary_stats(ground_truth)
+    # res_stats = get_summary_stats(residuals)
 
-    print("\n=== Model Evaluation Summary ===")
-    display_summary_stats(pred_stats, label="Predictions")
-    display_summary_stats(gt_stats, label="Ground Truth")
-    display_summary_stats(res_stats, label="Residuals")
+    # print("\n=== Model Evaluation Summary ===")
+    # display_summary_stats(pred_stats, label="Predictions")
+    # display_summary_stats(gt_stats, label="Ground Truth")
+    # display_summary_stats(res_stats, label="Residuals")
 
-    # Visualize results
-    plot_results(ground_truth, predictions, residuals)
+    # # Visualize results
+    # plot_results(ground_truth, predictions, residuals)
 
-    # # Perform SHAP analysis for train, validation, and test sets
-    # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # shap_plot(train_shap)
+    # # # Perform SHAP analysis for train, validation, and test sets
+    # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # shap_plot(train_shap)
 
-    # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # # shap_plot(val_shap)
+    # # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # # shap_plot(val_shap)
 
-    # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
-    # # shap_plot(test_shap)
+    # # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # # shap_plot(test_shap)
 
-    # # Perform LIME analysis for train, validation, and test sets
-    # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # # Perform LIME analysis for train, validation, and test sets
+    # # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
 
-    print("Time taken:", time.time() - start_time)
+    # print("Time taken:", time.time() - start_time)
 
 
 if __name__ == "__main__":

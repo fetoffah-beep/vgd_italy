@@ -89,6 +89,8 @@ class VGDDataset(Dataset):
                     "times": self.data_time[t : t + self.seq_len],
                 }
                 self.data_points.append(data_point)
+            #     break
+            # break
                 
     def __len__(self):
         return len(self.data_points)
@@ -135,9 +137,9 @@ class VGDDataset(Dataset):
                         raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
                     
                     # Sample the variable at the point locations using nearest neighbor interpolation
-                    sampled = ds[var_name].interp(
+                    sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
                         {lat_name: xr.DataArray(lat, dims="points"),
-                         lon_name: xr.DataArray(lon, dims="points")},
+                        lon_name: xr.DataArray(lon, dims="points")},
                         method="nearest"
                     )
                 
@@ -159,7 +161,6 @@ class VGDDataset(Dataset):
 
         # Get static features include categorical variables with one-hot encoding
         for var_name in sorted(self.stats['mean']['static'].keys()):
-            print(var_name)
             var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
             with xr.open_dataset(var_path, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
                 # Rechunk after loading to avoid too many chunks
@@ -174,26 +175,39 @@ class VGDDataset(Dataset):
                 if lat_name is None or lon_name is None:
                     raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
                 
-                # Sample the variable at the point locations using linear interpolation
-                sampled = ds[var_name].interp(
-                        {lat_name: xr.DataArray(lat, dims="points"),
-                         lon_name: xr.DataArray(lon, dims="points")},
-                        method="nearest"
-                    )
+                # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
+                sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
+                    {lat_name: xr.DataArray(lat, dims="points"),
+                     lon_name: xr.DataArray(lon, dims="points")},
+                    method="nearest"
+                )
+
+                # sampled = ds[var_name].interp(
+                #         {lat_name: xr.DataArray(lat, dims="points"),
+                #          lon_name: xr.DataArray(lon, dims="points")},
+                #         method="nearest"
+                #     )
                 
                 sampled = sampled.astype("float32").values
 
                 # Normalize the continuos variables, one hot encode the categories
+
                 if var_name in self.categorical_vars:
-                    # One hot encode categorical variables. Map sampled values to indices in categories
                     categories = self.var_categories[var_name]
-                    cat_to_idx = {cat: idx for idx, cat in enumerate(categories)}
-                    # Flatten sampled, map to indices, then reshape
+                    cat_to_idx = {int(cat): idx for idx, cat in enumerate(categories)}
+
                     sampled_flat = sampled.flatten()
-                    mapped = np.array([cat_to_idx.get(int(val), 0) for val in sampled_flat])
-                    mapped = mapped.reshape(sampled.shape)
+
+                    mapped = []
+                    for val in sampled_flat:
+                        if np.isnan(val):
+                            mapped.append(3)
+                        else:
+                            mapped.append(cat_to_idx.get(int(val), 3))  
+                            # if val not found, also fallback to 3
+                    mapped = np.array(mapped).reshape(sampled.shape)
                     one_hot = F.one_hot(torch.tensor(mapped, dtype=torch.long), num_classes=len(categories)).numpy()
-                    sampled = one_hot.T
+                    sampled = one_hot.transpose(2, 0, 1)  # [C, H, W]
                 else:
                     # Replace NaNs with the mean value of the variable
                     nan_mask = ~np.isfinite(sampled)

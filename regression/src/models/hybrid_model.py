@@ -92,12 +92,12 @@ class VGDModel(nn.Module):
                             )
         
         self.fc_static= nn.Sequential(
-                                nn.Linear(32*5*5*25, 256),
+                                nn.Linear(64*5*5*25, 256),
                                 nn.ReLU()
                             )
         
         self.fc_dynamic = nn.Sequential(
-                                nn.Linear(128*5*5*25, 256),
+                                nn.Linear(256*5*5*25, 256),
                                 nn.ReLU()
                             )
         
