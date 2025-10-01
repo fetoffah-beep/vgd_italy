@@ -86,22 +86,17 @@ def main(args):
     train_dataset = VGDDataset('training',      "../emilia_aoi/train_metadata.csv", 'config.yaml', "../data", seq_len, time_split=False)
     val_dataset   = VGDDataset('validation',    "../emilia_aoi/val_metadata.csv",   'config.yaml', "../data", seq_len, time_split=False)
     test_dataset  = VGDDataset('test',          "../emilia_aoi/test_metadata.csv",  'config.yaml', "../data", seq_len, time_split=False)
-
-    # Example: print the first sample
-    sample = test_dataset[0]
     
-    # print("Sample keys:", sample.keys())
-    # print("\nStatic features:")
-    # for k, v in sample:
-    #     print(f"{k}: {v.shape}")
+    # # Example: print the first sample
+    # sample = test_dataset[0]
 
-    # print("\nDynamic features:")
-    # for k, v in sample['dynamic']:
-    #     print(f"{k}: {v.shape}")
+    # print("Static shape:", sample["static"].shape)
+    # print("Dynamic shape:", sample["dynamic"].shape)
+    # print("Target shape:", sample["target"].shape)
+    # print("Coords:", sample["coords"])
 
-    # print("\nTarget:", sample['target'])
-    # print("\nCoordinates:", sample['coords'])
 
+    
 
     # Create DataLoaders for batching and shuffling
     train_loader = VGDDataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
@@ -152,29 +147,29 @@ def main(args):
     )
     
 
-    # # Test/Evaluate the model
-    # print("Training complete. Evaluating the model on the test set.")
-    # model.eval()
+    # Test/Evaluate the model
+    print("Training complete. Evaluating the model on the test set.")
+    model.eval()
 
-    # results = evaluate_model(model, test_loader, device=device)
-    # predictions, ground_truth, residuals = (
-    #     results["predictions"],
-    #     results["ground_truth"],
-    #     results["residuals"],
-    # )
+    results = evaluate_model(model, test_loader, device=device)
+    predictions, ground_truth, residuals = (
+        results["predictions"],
+        results["ground_truth"],
+        results["residuals"],
+    )
 
-    # # Compute and display statistics
-    # pred_stats = get_summary_stats(predictions)
-    # gt_stats = get_summary_stats(ground_truth)
-    # res_stats = get_summary_stats(residuals)
+    # Compute and display statistics
+    pred_stats = get_summary_stats(predictions)
+    gt_stats = get_summary_stats(ground_truth)
+    res_stats = get_summary_stats(residuals)
 
-    # print("\n=== Model Evaluation Summary ===")
-    # display_summary_stats(pred_stats, label="Predictions")
-    # display_summary_stats(gt_stats, label="Ground Truth")
-    # display_summary_stats(res_stats, label="Residuals")
+    print("\n=== Model Evaluation Summary ===")
+    display_summary_stats(pred_stats, label="Predictions")
+    display_summary_stats(gt_stats, label="Ground Truth")
+    display_summary_stats(res_stats, label="Residuals")
 
-    # # Visualize results
-    # plot_results(ground_truth, predictions, residuals)
+    # Visualize results
+    plot_results(ground_truth, predictions, residuals)
 
     # # # Perform SHAP analysis for train, validation, and test sets
     # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
@@ -191,7 +186,7 @@ def main(args):
     # # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
     # # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
 
-    # print("Time taken:", time.time() - start_time)
+    print("Time taken:", time.time() - start_time)
 
 
 if __name__ == "__main__":

@@ -34,13 +34,13 @@ class VGDDataset(Dataset):
 
         self.var_categories = config["data"].get("categories", {})
 
-        # # Mask, already in EPSG 3035 so no need to reproject
-        # mask_path = os.path.join(self.data_dir, "mask.nc")
-        # self.mask = xr.open_dataset(mask_path, engine="netcdf4")
-        # if not self.mask.rio.crs:
-        #     self.mask = self.mask.rio.write_crs("EPSG:3035")
+        # Mask, already in EPSG 3035 so no need to reproject
+        mask_path = os.path.join(self.data_dir, "mask.nc")
+        self.mask = xr.open_dataset(mask_path, engine="netcdf4")
+        if not self.mask.rio.crs:
+            self.mask = self.mask.rio.write_crs("EPSG:3035")
 
-        # self.mask = self.mask.rio.reproject("EPSG:4326")
+        self.mask = self.mask.rio.reproject("EPSG:4326")
 
             
         # Load the metadata.
@@ -83,53 +83,218 @@ class VGDDataset(Dataset):
             elif self.split == 'test':
                 self.data_time = self.data_time[self.data_time >= '20220601']
 
-        # ---- Build data points containing position coords and start-end dates ----
-        # self.data_points = []
-        # for i, entry in tqdm(self.metadata.iterrows(), total=len(self.metadata)):
-        #     for t in range(len(self.data_time) - self.seq_len):
-        #         data_point = {
-        #             "idx": i,
-        #             "time_idx": t,
-        #             "easting": entry["easting"],
-        #             "northing": entry["northing"],
-        #             "times": self.data_time[t: t + self.seq_len],
-        #             "longitude": entry["lon"],
-        #             "latitude": entry["lat"],
-        #         }
-        #         self.data_points.append(data_point)
+
+        # Pre-load static datasets
+        self.static_data = {}
+        for var_name in sorted(self.stats['mean']['static'].keys()):
+            var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
+            with xr.open_dataset(var_path, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
+                ds = ds.chunk(10000)
+                # Ensure dataset has a CRS
+                if not ds.rio.crs:
+                    ds = ds.rio.write_crs("EPSG:4326")
+                
+                # Use easting/northing directly (since now in EPSG:3035)
+                lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+                lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+                if lat_name is None or lon_name is None:
+                    raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
+                sampled = ds[var_name].interp(
+                    {lat_name: xr.DataArray(self.metadata["lon"], dims="points"),
+                    lon_name: xr.DataArray(self.metadata["lat"], dims="points")},
+                    method="nearest"
+                )
+            sampled = sampled.astype("float32")
+            self.static_data[var_name] = sampled
+
+
         
-        
+        # Pre-load dynamic datasets
+        self.dynamic_data = {}
+        for var_name in sorted(self.stats['mean']['dynamic'].keys()):
+            var_path = os.path.join(self.data_dir, "dynamic", f"{var_name}.nc")
+            with xr.open_dataset(var_path, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
+                ds = ds.chunk(10000)
+                if not ds.rio.crs:
+                    ds = ds.rio.write_crs("EPSG:4326")
+                
+                if var_name == 'seismic_magnitude':
+                    
+                    # Use KDTree to map metadata points to nearest NetCDF points
+                    nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
+                    metadata_points = np.column_stack([self.metadata['lon'], self.metadata['lat']])
+                    tree = cKDTree(nc_points)
+                    distances, indices = tree.query(metadata_points)
+
+                    # Sample variable using nearest points
+                    sampled = ds[var_name].isel(point=xr.DataArray(indices, dims="points"))
+                
+                else:
+                    lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+                    lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+                    if lat_name is None or lon_name is None:
+                        raise ValueError(f"Could not find latitude/longitude coordinates in dataset {f}. Have only {list(ds.coords.keys())}")
+                    
+                    ds[var_name] = ds[var_name].interpolate_na(dim='time', method="linear", fill_value="extrapolate")
+
+                    sampled = ds[var_name].interp(
+                                {lat_name: xr.DataArray(self.metadata["lat"], dims="points"),
+                                lon_name: xr.DataArray(self.metadata["lon"], dims="points")},
+                                method="nearest"
+                            )
+                        
+                sampled = sampled.astype("float32")
+                self.dynamic_data[var_name] = sampled
+
+
         # ---- Build data points containing position coords and start-end dates ----
         self.data_points = []
-        for i in tqdm(range(len(self.metadata))): # Iterate by simple index
+        transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
+        for i, entry in tqdm(self.metadata.iterrows(), total=len(self.metadata)):
             for t in range(len(self.data_time) - self.seq_len):
-                # Store a lightweight tuple: (spatial_index, starting_time_index)
-                data_point_indices = (i, t)
-                self.data_points.append(data_point_indices)
-                
-                
-        
+                # Define 5x5 grid of coordinates centered at (easting, northing)
+                neighbors = self.point_neighbors(
+                    {"easting": entry["easting"], "northing": entry["northing"]}, spacing=100, half=2
+                )
+                data_point = {
+                    "idx": i,
+                    "time_idx": t,
+                    "easting": entry["easting"],
+                    "northing": entry["northing"],
+                    "times": self.data_time[t: t + self.seq_len],
+                    # "neighbors": neighbors
+                }
+                self.data_points.append(data_point)
 
           
     def __len__(self):
         return len(self.data_points)
-
     
-    def __getitem__(self, item_idx):
-        idx, time_idx = self.data_points[item_idx]
-        entry = self.metadata.iloc[idx]
-        
-        easting = entry["easting"]
-        northing = entry["northing"]
-        data_times = self.data_time[time_idx: time_idx + self.seq_len]
-        longitude = entry["lon"]
-        latitude = entry["lat"]
-        
-        # idx, time_idx, easting, northing, data_times, longitude, latitude = self.data_points[idx].values()
+    def __getitem__(self, idx):
+        idx, time_idx, easting, northing, data_times, pnt_neighbors = self.data_points[idx].values()
         sample = {'predictors': {'static': {}, 
                                  'dynamic': {}}, 
                   'target': None, 
-                  'coords': (longitude, latitude)}
+                  'coords': (easting, northing)}
+        
+        xs, ys = pnt_neighbors[:, 0], pnt_neighbors[:, 1]
+        xs, ys = self.transformer.transform(xs, ys)
+
+        # Get the target value at time t+seq_len
+        target = self.target[idx, time_idx + self.seq_len]
+        if not np.isfinite(target):
+            raise ValueError(f"Target value is NaN for idx {idx} at time_idx {time_idx + self.seq_len}")
+        
+        # Normalize target usign min-max scaling
+        target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
+        sample['target'] = torch.tensor(target, dtype=torch.float32)
+
+        # For the given point and its neighbors
+        # Get dynamic features for times t to t+seq_len-1, sample from self.dynamic_data pre-loaded data
+        for var_name in sorted(self.stats['mean']['dynamic'].keys()):
+            lat_name = next((c for c in self.dynamic_data[var_name].coords if c.lower() in self.coord_names['y']), None)
+            lon_name = next((c for c in self.dynamic_data[var_name].coords if c.lower() in self.coord_names['x']), None)
+            sampled = self.dynamic_data[var_name].interp(
+                                {lat_name: xr.DataArray(ys, dims="points"),
+                                lon_name: xr.DataArray(xs, dims="points")},
+                                method="nearest"
+                            )
+            
+            sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
+            sampled = sampled.fillna(self.stats['mean']['dynamic'][var_name])
+
+            # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
+            sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
+            
+            sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+        # Get static features include categorical variables with one-hot encoding
+        for var_name in sorted(self.stats['mean']['static'].keys()):
+                
+            lat_name = next((c for c in self.static_data[var_name].coords if c.lower() in self.coord_names['y']), None)
+            lon_name = next((c for c in self.static_data[var_name].coords if c.lower() in self.coord_names['x']), None)
+            
+            if lat_name is None or lon_name is None:
+                raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
+                
+            # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
+            sampled = self.static_data[var_name].where(~np.isnan(self.static_data[var_name])).interp(
+                {lat_name: xr.DataArray(ys, dims="points"),
+                lon_name: xr.DataArray(xs, dims="points")},
+                method="nearest"
+                )
+            
+            
+            # Normalize the continuos variables, one hot encode the categories
+
+            if var_name in self.categorical_vars:
+                categories = self.var_categories[var_name]
+                cat_to_idx = {int(cat): idx for idx, cat in enumerate(categories)}
+
+                sampled_flat = sampled.flatten()
+
+                mapped = []
+                for val in sampled_flat:
+                    if np.isnan(val):
+                        mapped.append(3)
+                    else:
+                        mapped.append(cat_to_idx.get(int(val), 3))  
+                        # if val not found, also fallback to 3
+                mapped = np.array(mapped).reshape(sampled.shape)
+                one_hot = F.one_hot(torch.tensor(mapped, dtype=torch.long), num_classes=len(categories)).numpy()
+                sampled = one_hot.transpose(2, 0, 1)  # [C, H, W]
+            else:
+                # Replace NaNs with the mean value of the variable
+                sampled = sampled.fillna(self.stats['mean']['static'][var_name])
+
+                # sampled = (sampled - self.stats['mean']['static'][var_name]) / self.stats['std']['static'][var_name]
+                sampled = self.min_max_scale(sampled, self.stats['min']['static'][var_name], self.stats['max']['static'][var_name])
+
+            if sampled.ndim == 1:
+                sampled = sampled[None, :] 
+
+            sampled = sampled.astype("float32").values
+
+            sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+        # Sample the mask at the point locations and add to the sample
+        # This is not needed as the MPs are always known in the metadata but it can be useful for debugging
+        mask_sampled = self.mask['mask'].interp(
+                        x = xr.DataArray(xs, dims="points"),
+                        y = xr.DataArray(ys, dims="points"),
+                        method = "nearest"
+                    ).values
+        mask_sampled = mask_sampled.astype("float32")
+        sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32)
+        sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32).unsqueeze(0).repeat(self.seq_len, 1)
+
+        # Reshape the sample to have shape [channels, height, width] for static and [time, channels, height, width] for dynamic
+        for k, v in sample['predictors']['static'].items():
+            sample['predictors']['static'][k] = v.view(-1, 5, 5)
+        for k, v in sample['predictors']['dynamic'].items():
+            sample['predictors']['dynamic'][k] = v.view(self.seq_len, -1, 5, 5)
+
+        static_tensor = torch.cat(list(sample['predictors']['static'].values()), dim=0)
+
+        dynamic_tensor = torch.cat([v for v in sample['predictors']['dynamic'].values()], dim=1)
+
+        return {"static": static_tensor,              
+                "dynamic": dynamic_tensor,           
+                "target": sample['target'],           
+                "coords": sample['coords']}
+
+
+
+
+    
+    def default__getitem__(self, idx):
+        idx, time_idx, easting, northing, data_times = self.data_points[idx].values()
+        sample = {'predictors': {'static': {}, 
+                                 'dynamic': {}}, 
+                  'target': None, 
+                  'coords': (easting, northing)}
         
         # Define 5x5 grid of coordinates centered at (easting, northing)
         pnt_neighbors = self.point_neighbors({"easting": easting, "northing": northing}, spacing=100, half=2)
@@ -141,8 +306,7 @@ class VGDDataset(Dataset):
         if not np.isfinite(target):
             raise ValueError(f"Target value is NaN for idx {idx} at time_idx {time_idx + self.seq_len}")
         # Normalize target
-        # target = (target - self.stats['mean']['target']) / self.stats['std']['target']
-        target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
+        target = (target - self.stats['mean']['target']) / self.stats['std']['target']
         sample['target'] = torch.tensor(target, dtype=torch.float32)
 
         # Get dynamic features for times t to t+seq_len-1
@@ -151,8 +315,8 @@ class VGDDataset(Dataset):
             with xr.open_dataset(var_path, engine="netcdf4", chunks='auto', drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
-                
-                lon, lat = self.transformer.transform(xs, ys)
+                transformer = Transformer.from_crs("EPSG:3035", ds.rio.crs, always_xy=True)
+                lon, lat = transformer.transform(xs, ys)
  
                 if var_name == 'seismic_magnitude':
                     # Use KDTree to map point to nearest NetCDF point
@@ -197,8 +361,8 @@ class VGDDataset(Dataset):
                 ds = ds.chunk(1000)
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
-                
-                lon, lat = self.transformer.transform(xs, ys)
+                transformer = Transformer.from_crs("EPSG:3035", ds.rio.crs, always_xy=True)
+                lon, lat = transformer.transform(xs, ys)
 
                 lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
@@ -211,6 +375,12 @@ class VGDDataset(Dataset):
                      lon_name: xr.DataArray(lon, dims="points")},
                     method="nearest"
                 )
+
+                # sampled = ds[var_name].interp(
+                #         {lat_name: xr.DataArray(lat, dims="points"),
+                #          lon_name: xr.DataArray(lon, dims="points")},
+                #         method="nearest"
+                #     )
                 
                 sampled = sampled.astype("float32").values
 
@@ -247,16 +417,16 @@ class VGDDataset(Dataset):
                 sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
-        # # Sample the mask at the point locations and add to the sample
-        # # This is not needed as the MPs are always known in the metadata but it can be useful for debugging
-        # mask_sampled = self.mask['mask'].interp(
-        #                 x = xr.DataArray(xs, dims="points"),
-        #                 y = xr.DataArray(ys, dims="points"),
-        #                 method = "nearest"
-        #             ).values
-        # mask_sampled = mask_sampled.astype("float32")
-        # sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32)
-        # sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32).unsqueeze(0).repeat(self.seq_len, 1)
+        # Sample the mask at the point locations and add to the sample
+        # This is not needed as the MPs are always known in the metadata but it can be useful for debugging
+        mask_sampled = self.mask['mask'].interp(
+                        x = xr.DataArray(xs, dims="points"),
+                        y = xr.DataArray(ys, dims="points"),
+                        method = "nearest"
+                    ).values
+        mask_sampled = mask_sampled.astype("float32")
+        sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32)
+        sample['predictors']['mask'] = torch.tensor(mask_sampled, dtype=torch.float32).unsqueeze(0).repeat(self.seq_len, 1)
 
         # Reshape the sample to have shape [channels, height, width] for static and [time, channels, height, width] for dynamic
         for k, v in sample['predictors']['static'].items():

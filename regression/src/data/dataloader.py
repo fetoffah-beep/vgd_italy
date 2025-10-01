@@ -45,7 +45,7 @@ class VGDDataLoader:
         persistent_workers = self.num_workers > 0
 
         data_loader = DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=self.shuffle,
-                                  pin_memory=pin_memory, persistent_workers =persistent_workers, prefetch_factor=3)
+                                  pin_memory=pin_memory, persistent_workers =persistent_workers)
         
         return data_loader
 

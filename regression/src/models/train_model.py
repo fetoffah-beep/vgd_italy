@@ -59,17 +59,15 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     patience_counter = 0
     
     with open(f"models/logs/log_{timestamp}.txt", "w") as log_f, wandb.init(project="vgd_italy") as run:
+        with open(config_path) as config_file:
+            config = yaml.safe_load(config_file)
+        baseline_pred = config["data"]['stats']["mean"]["target"]
+
         for epoch in range(start_epoch, num_epochs):
             model.train()
             training_loss = 0.0
             interval_loss_accum = 0.0
             interval_step_count = 0
-
-            
-            with open(config_path) as config_file:
-                config = yaml.safe_load(config_file)
-            baseline_pred = config["data"]['stats']["mean"]["target"]
-
 
 
             for sample in tqdm(train_loader):
