@@ -27,29 +27,16 @@ from src.evaluation.summary_stats import get_summary_stats, display_summary_stat
 from src.evaluation.visualization import plot_results
 from torchvision.transforms import Compose
 from src.data.transforms.transforms import NormalizeTransform
+
 import cProfile
-from pstats import Stats
+import pstats
 
 
-def main(args):
-
-    with open("../data/dynamic_feature.txt", "r") as f:
-        dynamic_feature_names = [line.strip() for line in f if line.strip()]
-    
-    with open("../data/static_feature.txt", "r") as f:
-        static_feature_names = [sline.strip() for sline in f if sline.strip()]
-    
-    
-
-    
+def main(args):    
     
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
-        # config["data"] = transform_stats
-        #
-    # # Save updated config
-    # with open("config.yaml", "w") as f:
-    #     yaml.dump(config, f, sort_keys=False)
+        
     
     dyn_mean = config["data"]['stats']["mean"]["dynamic"]
     dyn_std = config["data"]['stats']["std"]["dynamic"]
@@ -73,10 +60,6 @@ def main(args):
     output_size = config["model"]["output_size"]
     
 
-    target_var = "displacement"
-    
-    
-    pred_vars = [dynamic_feature_names, static_feature_names, target_var]
     
 
     # continue_from_checkpoint = False
@@ -107,7 +90,6 @@ def main(args):
     train_loader, val_loader, test_loader = (dl.data_loader for dl in (train_loader, val_loader, test_loader))
 
 
-    # # # Compute correlations
     print(f"Train samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}, Test samples: {len(test_dataset)} \n")
 
     # Initialize the model
@@ -124,11 +106,11 @@ def main(args):
         
         
         
-    # # print(model)
-    # # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    # # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    # # print('Optimizer: ', optimizer)
-    # # print('Start epoch: ', start_epoch)
+    print(model)
+    print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print('Optimizer: ', optimizer)
+    print('Start epoch: ', start_epoch)
 
 
 
@@ -190,6 +172,9 @@ def main(args):
 
 
 if __name__ == "__main__":
+    pr = cProfile.Profile()
+    # pr.enable()
+    
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--epochs", type=int, default=10, help="Number of epochs for training"
@@ -197,6 +182,17 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     args = parser.parse_args()
     main(args)
+    
+    pr.disable()
+
+    # Save the stats to a file
+    pr.dump_stats('profile_stats.prof')
+    
+    # Read and print the top 10 bottlenecks
+    stats = pstats.Stats('profile_stats.prof').sort_stats('tottime')
+    stats.print_stats(10)
+    
+
 
     
     # do_profiling = True

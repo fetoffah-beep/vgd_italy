@@ -134,6 +134,8 @@ class VGDDataset(Dataset):
         # Define 5x5 grid of coordinates centered at (easting, northing)
         pnt_neighbors = self.point_neighbors({"easting": easting, "northing": northing}, spacing=100, half=2)
         xs, ys = pnt_neighbors[:, 0], pnt_neighbors[:, 1]
+        
+        lon, lat = self.transformer.transform(xs, ys)
 
         
         # Get the target value at time t+seq_len
@@ -152,8 +154,7 @@ class VGDDataset(Dataset):
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
                 
-                lon, lat = self.transformer.transform(xs, ys)
- 
+                
                 if var_name == 'seismic_magnitude':
                     # Use KDTree to map point to nearest NetCDF point
                     nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
@@ -198,7 +199,7 @@ class VGDDataset(Dataset):
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
                 
-                lon, lat = self.transformer.transform(xs, ys)
+                # lon, lat = self.transformer.transform(xs, ys)
 
                 lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)

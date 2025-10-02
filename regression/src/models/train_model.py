@@ -39,6 +39,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(device)
         
     model.to(device)
 
