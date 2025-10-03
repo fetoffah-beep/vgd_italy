@@ -13,14 +13,14 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import yaml
 
 from src.utils.logger import log_message
-
-
+from line_profiler import profile
 
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# https://www.geeksforgeeks.org/l1l2-regularization-in-pytorch/
 
+# https://www.geeksforgeeks.org/l1l2-regularization-in-pytorch/
+@profile
 def train_model(model, train_loader, val_loader, optimizer, learning_rate, config_path, start_epoch=0, num_epochs=20, checkpoint_path=None, grad_clip=None):
     
     """
@@ -166,6 +166,8 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                             log_message(f"\n Early stopping at step {step} (epoch {epoch + 1})", log_f)
                             plot_losses(training_losses, validation_losses)
                             return
+                        
+                break
     
     
             # # End of epoch: average training loss

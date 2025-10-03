@@ -12,6 +12,8 @@ from pyproj import Transformer
 import yaml
 from scipy.spatial import cKDTree
 
+from line_profiler import profile
+
 
 class VGDDataset(Dataset):
     def __init__(self, split, metadata_file, config_path, data_dir, seq_len, time_split=False):
@@ -107,7 +109,11 @@ class VGDDataset(Dataset):
                 data_point_indices = (i, t)
                 self.data_points.append(data_point_indices)
                 
-                
+        # Cache the static and dynamic data
+        self.static_data = {var: xr.open_dataset(os.path.join(self.data_dir, "static", f"{var}.nc"), drop_variables=["ssm_noise", "spatial_ref", "band", "crs"], engine='netcdf4') for var in sorted(self.stats['mean']['static'].keys())}
+        self.dynamic_data = {var: xr.open_dataset(os.path.join(self.data_dir, "dynamic", f"{var}.nc"), drop_variables=["ssm_noise", "spatial_ref", "band", "crs"], engine='netcdf4') for var in sorted(self.stats['mean']['dynamic'].keys())}
+
+        
         
 
           
@@ -115,6 +121,7 @@ class VGDDataset(Dataset):
         return len(self.data_points)
 
     
+    @profile
     def __getitem__(self, item_idx):
         idx, time_idx = self.data_points[item_idx]
         entry = self.metadata.iloc[idx]
@@ -150,102 +157,104 @@ class VGDDataset(Dataset):
         # Get dynamic features for times t to t+seq_len-1
         for var_name in sorted(self.stats['mean']['dynamic'].keys()):
             var_path = os.path.join(self.data_dir, "dynamic", f"{var_name}.nc")
-            with xr.open_dataset(var_path, engine="netcdf4", chunks='auto', drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
-                if not ds.rio.crs:
-                    ds = ds.rio.write_crs("EPSG:4326")
-                
-                
-                if var_name == 'seismic_magnitude':
-                    # Use KDTree to map point to nearest NetCDF point
-                    nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
-                    tree = cKDTree(nc_points)
-                    distances, indices = tree.query(np.column_stack([lon, lat]))
-                    sampled = ds[list(ds.data_vars.keys())[0]].isel(point=xr.DataArray(indices, dims="points"))
-                else:
-                    lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
-                    lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-                    if lat_name is None or lon_name is None:
-                        raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
-                    
-                    # Sample the variable at the point locations using nearest neighbor interpolation
-                    sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
-                        {lat_name: xr.DataArray(lat, dims="points"),
-                        lon_name: xr.DataArray(lon, dims="points")},
-                        method="nearest"
-                    )
-                
-                # Select the time indices corresponding to data_times using interpolation
-                sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
-                sampled = sampled.astype("float32").values
-
-
-                # Replace NaNs with the mean value of the variable
-                nan_mask = ~np.isfinite(sampled)
-                if np.any(nan_mask):
-                    sampled[nan_mask] = self.stats['mean']['dynamic'][var_name]
-
-
-                # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
-                sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
-                
-                sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32)
-
-        # Get static features include categorical variables with one-hot encoding
-        for var_name in sorted(self.stats['mean']['static'].keys()):
-            var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
-            with xr.open_dataset(var_path, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
-                # Rechunk after loading to avoid too many chunks
-                ds = ds.chunk(1000)
-                if not ds.rio.crs:
-                    ds = ds.rio.write_crs("EPSG:4326")
-                
-                # lon, lat = self.transformer.transform(xs, ys)
-
+            ds = self.dynamic_data[var_name]
+            if not ds.rio.crs:
+                ds = ds.rio.write_crs("EPSG:4326")
+            
+            
+            if var_name == 'seismic_magnitude':
+                # Use KDTree to map point to nearest NetCDF point
+                nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
+                tree = cKDTree(nc_points)
+                distances, indices = tree.query(np.column_stack([lon, lat]))
+                sampled = ds[list(ds.data_vars.keys())[0]].isel(point=xr.DataArray(indices, dims="points"))
+            else:
                 lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
                 if lat_name is None or lon_name is None:
                     raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
                 
-                # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
+                # Sample the variable at the point locations using nearest neighbor interpolation
                 sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
                     {lat_name: xr.DataArray(lat, dims="points"),
-                     lon_name: xr.DataArray(lon, dims="points")},
+                    lon_name: xr.DataArray(lon, dims="points")},
                     method="nearest"
                 )
-                
-                sampled = sampled.astype("float32").values
+            
+            # Select the time indices corresponding to data_times using interpolation
+            sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
+            sampled = sampled.values
+            
+            
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats['mean']['dynamic'][var_name]
 
-                # Normalize the continuos variables, one hot encode the categories
 
-                if var_name in self.categorical_vars:
-                    categories = self.var_categories[var_name]
-                    cat_to_idx = {int(cat): idx for idx, cat in enumerate(categories)}
+            # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
+            sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
+            
+            sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32)
 
-                    sampled_flat = sampled.flatten()
+        # Get static features include categorical variables with one-hot encoding
+        for var_name in sorted(self.stats['mean']['static'].keys()):
+            var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
+            ds = self.static_data[var_name]
+                # Rechunk after loading to avoid too many chunks
+            ds = ds.chunk(1000)
+            if not ds.rio.crs:
+                ds = ds.rio.write_crs("EPSG:4326")
+            
+            # lon, lat = self.transformer.transform(xs, ys)
 
-                    mapped = []
-                    for val in sampled_flat:
-                        if np.isnan(val):
-                            mapped.append(3)
-                        else:
-                            mapped.append(cat_to_idx.get(int(val), 3))  
-                            # if val not found, also fallback to 3
-                    mapped = np.array(mapped).reshape(sampled.shape)
-                    one_hot = F.one_hot(torch.tensor(mapped, dtype=torch.long), num_classes=len(categories)).numpy()
-                    sampled = one_hot.transpose(2, 0, 1)  # [C, H, W]
-                else:
-                    # Replace NaNs with the mean value of the variable
-                    nan_mask = ~np.isfinite(sampled)
-                    if np.any(nan_mask):
-                        sampled[nan_mask] = self.stats['mean']['static'][var_name]
+            lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+            lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+            if lat_name is None or lon_name is None:
+                raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
+            
+            # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
+            sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
+                {lat_name: xr.DataArray(lat, dims="points"),
+                    lon_name: xr.DataArray(lon, dims="points")},
+                method="nearest"
+            )
 
-                    # sampled = (sampled - self.stats['mean']['static'][var_name]) / self.stats['std']['static'][var_name]
-                    sampled = self.min_max_scale(sampled, self.stats['min']['static'][var_name], self.stats['max']['static'][var_name])
+            sampled = sampled.values
+            
+            
+            
+            # Normalize the continuos variables, one hot encode the categories
 
-                if sampled.ndim == 1:
-                    sampled = sampled[None, :] 
-                
-                sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+            if var_name in self.categorical_vars:
+                categories = self.var_categories[var_name]
+                cat_to_idx = {int(cat): idx for idx, cat in enumerate(categories)}
+
+                sampled_flat = sampled.flatten()
+
+                mapped = []
+                for val in sampled_flat:
+                    if np.isnan(val):
+                        mapped.append(3)
+                    else:
+                        mapped.append(cat_to_idx.get(int(val), 3))  
+                        # if val not found, also fallback to 3
+                mapped = np.array(mapped).reshape(sampled.shape)
+                one_hot = F.one_hot(torch.tensor(mapped, dtype=torch.long), num_classes=len(categories)).numpy()
+                sampled = one_hot.transpose(2, 0, 1)  # [C, H, W]
+            else:
+                # Replace NaNs with the mean value of the variable
+                nan_mask = ~np.isfinite(sampled)
+                if np.any(nan_mask):
+                    sampled[nan_mask] = self.stats['mean']['static'][var_name]
+
+                # sampled = (sampled - self.stats['mean']['static'][var_name]) / self.stats['std']['static'][var_name]
+                sampled = self.min_max_scale(sampled, self.stats['min']['static'][var_name], self.stats['max']['static'][var_name])
+
+            if sampled.ndim == 1:
+                sampled = sampled[None, :] 
+            
+            sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
         # # Sample the mask at the point locations and add to the sample

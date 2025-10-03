@@ -3,8 +3,8 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 2
-  batch_size: 512
-  num_workers: 2
+  batch_size: 1
+  num_workers: 0
   seq_len: 50
 model:
   name: CNN-ConvLSTM

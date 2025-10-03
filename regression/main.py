@@ -28,11 +28,14 @@ from src.evaluation.visualization import plot_results
 from torchvision.transforms import Compose
 from src.data.transforms.transforms import NormalizeTransform
 
-import cProfile
-import pstats
 
+from line_profiler import profile
+import line_profiler 
 
-def main(args):    
+profile = line_profiler.LineProfiler()
+
+@profile
+def main():    
     
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
@@ -128,6 +131,11 @@ def main(args):
 
     )
     
+    
+        
+        
+        
+    
 
     # Test/Evaluate the model
     print("Training complete. Evaluating the model on the test set.")
@@ -153,44 +161,43 @@ def main(args):
     # Visualize results
     plot_results(ground_truth, predictions, residuals)
 
-    # # # Perform SHAP analysis for train, validation, and test sets
-    # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # # shap_plot(train_shap)
+    # # # # Perform SHAP analysis for train, validation, and test sets
+    # # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # # shap_plot(train_shap)
 
-    # # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # # # shap_plot(val_shap)
+    # # # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # # # shap_plot(val_shap)
 
-    # # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
-    # # # shap_plot(test_shap)
+    # # # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # # # shap_plot(test_shap)
 
-    # # # Perform LIME analysis for train, validation, and test sets
-    # # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # # # # Perform LIME analysis for train, validation, and test sets
+    # # # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
+    # # # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # # # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
 
     print("Time taken:", time.time() - start_time)
 
 
 if __name__ == "__main__":
-    pr = cProfile.Profile()
-    # pr.enable()
+    main()
+    # profile.print_stats()
     
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--epochs", type=int, default=10, help="Number of epochs for training"
-    )
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    args = parser.parse_args()
-    main(args)
-    
-    pr.disable()
+    profile.print_stats()
 
-    # Save the stats to a file
-    pr.dump_stats('profile_stats.prof')
+
+
+
+
     
-    # Read and print the top 10 bottlenecks
-    stats = pstats.Stats('profile_stats.prof').sort_stats('tottime')
-    stats.print_stats(10)
+    # pr.disable()
+
+    # # Save the stats to a file
+    # pr.dump_stats('profile_stats.prof')
+    
+    # # Read and print the top 10 bottlenecks
+    # stats = pstats.Stats('profile_stats.prof').sort_stats('tottime')
+    # stats.print_stats(10)
     
 
 
