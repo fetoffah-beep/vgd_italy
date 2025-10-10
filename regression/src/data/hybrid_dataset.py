@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import numpy as np
 import pandas as pd
@@ -48,6 +49,7 @@ class VGDDataset(Dataset):
         # Load the metadata.
         # This file is to contain the position coordinates for the split [train, val or test]
         self.metadata = pd.read_csv(self.metadata_file)
+        # self.metadata = self.metadata.iloc[:100]
 
         # Transform the metadata coordinates to lat/lon upto 9 decimal places
         self.transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
@@ -74,56 +76,83 @@ class VGDDataset(Dataset):
 
         # Load the file containing the times
         time_path = os.path.join(self.data_dir, "target_times.npy")
-        self.data_time = np.load(time_path) 
+        data_time = np.load(time_path) 
+        self.data_time = pd.to_datetime(data_time, format="%Y%m%d")
 
         # if time split, exlude 2022 from training sampling, use first half of 2022 for validation and second half for testing
         if time_split:
             if self.split == 'training':
-                self.data_time = self.data_time[self.data_time < '20220101']
+                self.data_time = self.data_time[self.data_time < np.datetime64('2022-01-01')]
             elif self.split == 'validation':
-                self.data_time = self.data_time[(self.data_time >= '20220101') & (self.data_time < '20220601')]
+                self.data_time = self.data_time[(self.data_time >= np.datetime64('2022-01-01')) & (self.data_time < np.datetime64('2022-06-01'))]
             elif self.split == 'test':
-                self.data_time = self.data_time[self.data_time >= '20220601']
+                self.data_time = self.data_time[self.data_time >= np.datetime64('2022-06-01')]
 
-        # ---- Build data points containing position coords and start-end dates ----
-        # self.data_points = []
-        # for i, entry in tqdm(self.metadata.iterrows(), total=len(self.metadata)):
-        #     for t in range(len(self.data_time) - self.seq_len):
-        #         data_point = {
-        #             "idx": i,
-        #             "time_idx": t,
-        #             "easting": entry["easting"],
-        #             "northing": entry["northing"],
-        #             "times": self.data_time[t: t + self.seq_len],
-        #             "longitude": entry["lon"],
-        #             "latitude": entry["lat"],
-        #         }
-        #         self.data_points.append(data_point)
-        
-        
-        # ---- Build data points containing position coords and start-end dates ----
-        self.data_points = []
-        for i in tqdm(range(len(self.metadata))): # Iterate by simple index
-            for t in range(len(self.data_time) - self.seq_len):
-                # Store a lightweight tuple: (spatial_index, starting_time_index)
-                data_point_indices = (i, t)
-                self.data_points.append(data_point_indices)
+
+
+        # # Cache the static and dynamic data
+        print('Cache the static and dynamic data')
+        self.static_data = {}
+        self.dynamic_data = {}
+        self.seismic_tree = {}
+
+        for var_name in sorted(self.stats['mean']['dynamic'].keys()):
+            var_path = os.path.join(self.data_dir, "dynamic", f"{var_name}.nc")
+            ds = xr.open_dataset(var_path, engine="netcdf4", chunks=None, drop_variables=["ssm_noise", "spatial_ref", "band", "crs"],
+                                    decode_cf=False, decode_times=False)
+
+            # ds = self.dynamic_data[var_name]
+            if not ds.rio.crs:
+                ds = ds.rio.write_crs("EPSG:4326")
+            
+            
+            if var_name == 'seismic_magnitude':
+                ds = ds.chunk({"time": 500, 'point': 500})
+                nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
+                self.seismic_tree[var_name] = cKDTree(nc_points)
+
+            else:
+                lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+                lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+                ds = ds.chunk({"time": 500, lat_name: 500, lon_name: 500})
+                if lat_name is None or lon_name is None:
+                    raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
                 
-        # Cache the static and dynamic data
-        self.static_data = {var: xr.open_dataset(os.path.join(self.data_dir, "static", f"{var}.nc"), drop_variables=["ssm_noise", "spatial_ref", "band", "crs"], engine='netcdf4') for var in sorted(self.stats['mean']['static'].keys())}
-        self.dynamic_data = {var: xr.open_dataset(os.path.join(self.data_dir, "dynamic", f"{var}.nc"), drop_variables=["ssm_noise", "spatial_ref", "band", "crs"], engine='netcdf4') for var in sorted(self.stats['mean']['dynamic'].keys())}
+            ds['time'] = pd.to_datetime(ds['time'].values)
+            
 
-        
-        
+            # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
+            # ds = self.min_max_scale(ds, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
+            self.dynamic_data[var_name] = ds
+
+        for var_name in sorted(self.stats['mean']['static'].keys()):
+            var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
+            ds = xr.open_dataset(var_path, engine="netcdf4", chunks=None, 
+                                    drop_variables=["ssm_noise", "spatial_ref", "band", "crs"],
+                                    decode_cf=False, decode_times=False)
+
+            if not ds.rio.crs:
+                ds = ds.rio.write_crs("EPSG:4326")
+            
+            lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+            lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+            if lat_name is None or lon_name is None:
+                raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
+            
+            ds = ds.chunk({lat_name: 500, lon_name: 500})
+            self.static_data[var_name] = ds
 
           
     def __len__(self):
-        return len(self.data_points)
+        return len(self.metadata) * (len(self.data_time) - self.seq_len)
 
     
     @profile
     def __getitem__(self, item_idx):
-        idx, time_idx = self.data_points[item_idx]
+        # idx, time_idx = self.data_points[item_idx]
+        idx = item_idx // (len(self.data_time) - self.seq_len)
+        time_idx = item_idx % (len(self.data_time) - self.seq_len)
+
         entry = self.metadata.iloc[idx]
         
         easting = entry["easting"]
@@ -156,16 +185,11 @@ class VGDDataset(Dataset):
 
         # Get dynamic features for times t to t+seq_len-1
         for var_name in sorted(self.stats['mean']['dynamic'].keys()):
-            var_path = os.path.join(self.data_dir, "dynamic", f"{var_name}.nc")
             ds = self.dynamic_data[var_name]
-            if not ds.rio.crs:
-                ds = ds.rio.write_crs("EPSG:4326")
-            
             
             if var_name == 'seismic_magnitude':
                 # Use KDTree to map point to nearest NetCDF point
-                nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
-                tree = cKDTree(nc_points)
+                tree = self.seismic_tree[var_name]
                 distances, indices = tree.query(np.column_stack([lon, lat]))
                 sampled = ds[list(ds.data_vars.keys())[0]].isel(point=xr.DataArray(indices, dims="points"))
             else:
@@ -173,17 +197,19 @@ class VGDDataset(Dataset):
                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
                 if lat_name is None or lon_name is None:
                     raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
-                
-                # Sample the variable at the point locations using nearest neighbor interpolation
-                sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
+            
+
+                sampled = ds[var_name].where(~np.isnan(ds[var_name])).sel(
                     {lat_name: xr.DataArray(lat, dims="points"),
                     lon_name: xr.DataArray(lon, dims="points")},
                     method="nearest"
-                )
-            
+                ) 
+                # .sel({"time": xr.DataArray(data_times, dims="time")})
+
+
             # Select the time indices corresponding to data_times using interpolation
-            sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
-            sampled = sampled.values
+            sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest").values
+            # sampled = sampled.values
             
             
             # Replace NaNs with the mean value of the variable
@@ -194,35 +220,27 @@ class VGDDataset(Dataset):
 
             # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
             sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
-            
             sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+            
 
         # Get static features include categorical variables with one-hot encoding
         for var_name in sorted(self.stats['mean']['static'].keys()):
-            var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
             ds = self.static_data[var_name]
-                # Rechunk after loading to avoid too many chunks
-            ds = ds.chunk(1000)
-            if not ds.rio.crs:
-                ds = ds.rio.write_crs("EPSG:4326")
             
-            # lon, lat = self.transformer.transform(xs, ys)
-
             lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
             lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
             if lat_name is None or lon_name is None:
                 raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
             
+            
             # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
-            sampled = ds[var_name].where(~np.isnan(ds[var_name])).interp(
+            sampled = ds[var_name].where(~np.isnan(ds[var_name])).sel(
                 {lat_name: xr.DataArray(lat, dims="points"),
                     lon_name: xr.DataArray(lon, dims="points")},
                 method="nearest"
-            )
+            ).values
 
-            sampled = sampled.values
-            
-            
+            # sampled = sampled.values
             
             # Normalize the continuos variables, one hot encode the categories
 
@@ -253,8 +271,11 @@ class VGDDataset(Dataset):
 
             if sampled.ndim == 1:
                 sampled = sampled[None, :] 
-            
+
+                 
             sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+            
 
 
         # # Sample the mask at the point locations and add to the sample

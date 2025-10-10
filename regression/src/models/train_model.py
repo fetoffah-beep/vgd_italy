@@ -39,7 +39,6 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     """
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
         
     model.to(device)
 
@@ -64,14 +63,16 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
             config = yaml.safe_load(config_file)
         baseline_pred = config["data"]['stats']["mean"]["target"]
 
-        for epoch in range(start_epoch, num_epochs):
+        for epoch in range(0, 1):
             model.train()
             training_loss = 0.0
             interval_loss_accum = 0.0
             interval_step_count = 0
 
 
-            for sample in tqdm(train_loader):
+            for sample_idx, sample in enumerate(tqdm(train_loader)):
+                # if sample_idx > 5:
+                #     break
                 dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
                 dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                 optimizer.zero_grad()
@@ -166,8 +167,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                             log_message(f"\n Early stopping at step {step} (epoch {epoch + 1})", log_f)
                             plot_losses(training_losses, validation_losses)
                             return
-                        
-                break
+               
     
     
             # # End of epoch: average training loss
@@ -207,7 +207,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
             #         plot_losses(training_losses, validation_losses)
             #         return
     
-            # # scheduler.step()
+            # scheduler.step()
     
 
 

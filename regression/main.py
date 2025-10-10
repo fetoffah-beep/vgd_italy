@@ -4,7 +4,7 @@ Created on Mon Apr 15 09:25:04 2024
 
 @author: 39351
 """
-
+print('importing libraries')
 import time
 
 start_time = time.time()
@@ -31,7 +31,9 @@ from src.data.transforms.transforms import NormalizeTransform
 
 from line_profiler import profile
 import line_profiler 
+import torch.multiprocessing as mp
 
+print('libraries import done')
 profile = line_profiler.LineProfiler()
 
 @profile
@@ -51,21 +53,23 @@ def main():
    
     
     # Configuration
-    checkpoint_path = config["checkpoint"]["save_path"]
-    hidden_size = config["model"]["hidden_layers"]
-    num_epochs = config["training"]["epochs"]
-    learning_rate = config["optimizer"]["init_args"]["lr"]
-    model_optimizer = config["optimizer"]["class_path"]
-    batch_size = config["training"]["batch_size"]
-    num_workers = config["training"]["num_workers"]
-    device = config["model"]["device"]
-    seq_len = config["training"]["seq_len"]
-    output_size = config["model"]["output_size"]
+    checkpoint_path     = config["checkpoint"]["save_path"]
+    hidden_size         = config["model"]["hidden_layers"]
+    num_epochs          = config["training"]["epochs"]
+    learning_rate       = config["optimizer"]["init_args"]["lr"]
+    model_optimizer     = config["optimizer"]["class_path"]
+    batch_size          = config["training"]["batch_size"]
+    num_workers         = config["training"]["num_workers"]
+    device              = config["model"]["device"]
+    seq_len             = config["training"]["seq_len"]
+    output_size         = config["model"]["output_size"]
     
 
     
 
     # continue_from_checkpoint = False
+
+    print('starting dataset initialisation')
 
 
     # Initialize the dataset for train, val, and test splits
@@ -109,14 +113,13 @@ def main():
         
         
         
-    print(model)
-    print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    print('Optimizer: ', optimizer)
-    print('Start epoch: ', start_epoch)
-
-
-
+    # print(model)
+    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    # print('Optimizer: ', optimizer)
+    # print('Start epoch: ', start_epoch)
+    
+    
     # Train the model
     train_model(
         model,
@@ -128,38 +131,32 @@ def main():
         start_epoch=start_epoch,
         num_epochs=num_epochs,
         checkpoint_path=checkpoint_path,
-
     )
     
     
-        
-        
-        
-    
-
     # Test/Evaluate the model
     print("Training complete. Evaluating the model on the test set.")
     model.eval()
 
-    results = evaluate_model(model, test_loader, device=device)
-    predictions, ground_truth, residuals = (
-        results["predictions"],
-        results["ground_truth"],
-        results["residuals"],
-    )
+    # results = evaluate_model(model, test_loader, device=device)
+    # predictions, ground_truth, residuals = (
+    #     results["predictions"],
+    #     results["ground_truth"],
+    #     results["residuals"],
+    # )
 
-    # Compute and display statistics
-    pred_stats = get_summary_stats(predictions)
-    gt_stats = get_summary_stats(ground_truth)
-    res_stats = get_summary_stats(residuals)
+    # # Compute and display statistics
+    # pred_stats = get_summary_stats(predictions)
+    # gt_stats = get_summary_stats(ground_truth)
+    # res_stats = get_summary_stats(residuals)
 
-    print("\n=== Model Evaluation Summary ===")
-    display_summary_stats(pred_stats, label="Predictions")
-    display_summary_stats(gt_stats, label="Ground Truth")
-    display_summary_stats(res_stats, label="Residuals")
+    # print("\n=== Model Evaluation Summary ===")
+    # display_summary_stats(pred_stats, label="Predictions")
+    # display_summary_stats(gt_stats, label="Ground Truth")
+    # display_summary_stats(res_stats, label="Residuals")
 
-    # Visualize results
-    plot_results(ground_truth, predictions, residuals)
+    # # Visualize results
+    # plot_results(ground_truth, predictions, residuals)
 
     # # # # Perform SHAP analysis for train, validation, and test sets
     # # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
@@ -180,12 +177,12 @@ def main():
 
 
 if __name__ == "__main__":
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass
     main()
-    # profile.print_stats()
     
-    profile.print_stats()
-
-
 
 
 

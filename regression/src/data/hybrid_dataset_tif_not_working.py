@@ -165,6 +165,30 @@ class VGDDataset(Dataset):
                     # "neighbors": neighbors
                 }
                 self.data_points.append(data_point)
+        # ---- Build data points containing position coords and start-end dates ----
+        # self.data_points = []
+        # for i, entry in tqdm(self.metadata.iterrows(), total=len(self.metadata)):
+        #     for t in range(len(self.data_time) - self.seq_len):
+        #         data_point = {
+        #             "idx": i,
+        #             "time_idx": t,
+        #             "easting": entry["easting"],
+        #             "northing": entry["northing"],
+        #             "times": self.data_time[t: t + self.seq_len],
+        #             "longitude": entry["lon"],
+        #             "latitude": entry["lat"],
+        #         }
+        #         self.data_points.append(data_point)
+        
+        
+        # ---- Build data points containing position coords and start-end dates ----
+        # self.data_points = []
+        # for i in tqdm(range(len(self.metadata))): # Iterate by simple index
+        #     for t in range(len(self.data_time) - self.seq_len):
+        #         # Store a lightweight tuple: (spatial_index, starting_time_index)
+        #         data_point_indices = (i, t)
+        #         self.data_points.append(data_point_indices)
+                
 
           
     def __len__(self):
