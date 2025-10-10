@@ -43,12 +43,12 @@ def main():
         config = yaml.safe_load(config_file)
         
     
-    dyn_mean = config["data"]['stats']["mean"]["dynamic"]
-    dyn_std = config["data"]['stats']["std"]["dynamic"]
-    static_mean = config["data"]['stats']["mean"]["static"]
-    static_std = config["data"]['stats']["std"]["static"]
-    target_mean = config["data"]['stats']["mean"]["target"]
-    target_std = config["data"]['stats']["std"]["target"]
+    dyn_mean        = config["data"]['stats']["mean"]["dynamic"]
+    dyn_std         = config["data"]['stats']["std"]["dynamic"]
+    static_mean     = config["data"]['stats']["mean"]["static"]
+    static_std      = config["data"]['stats']["std"]["static"]
+    target_mean     = config["data"]['stats']["mean"]["target"]
+    target_std      = config["data"]['stats']["std"]["target"]
     
    
     
@@ -103,15 +103,10 @@ def main():
     model = VGDModel(test_dataset[0]['dynamic'].shape[1], test_dataset[0]['static'].shape[0], hidden_size, output_size)
 
     # Load checkpoint or initialize training
-    # if continue_from_checkpoint:
     model, optimizer, start_epoch = load_checkpoint(
         checkpoint_path, model, learning_rate, device, optimizer=model_optimizer
     )
-    # else:
-    #     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
-    #     start_epoch = 0
-        
-        
+     
         
     # print(model)
     # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
@@ -138,25 +133,25 @@ def main():
     print("Training complete. Evaluating the model on the test set.")
     model.eval()
 
-    # results = evaluate_model(model, test_loader, device=device)
-    # predictions, ground_truth, residuals = (
-    #     results["predictions"],
-    #     results["ground_truth"],
-    #     results["residuals"],
-    # )
+    results = evaluate_model(model, test_loader, 'config.yaml', device=device)
+    predictions, ground_truth, residuals = (
+        results["predictions"],
+        results["ground_truth"],
+        results["residuals"],
+    )
 
-    # # Compute and display statistics
-    # pred_stats = get_summary_stats(predictions)
-    # gt_stats = get_summary_stats(ground_truth)
-    # res_stats = get_summary_stats(residuals)
+    # Compute and display statistics
+    pred_stats = get_summary_stats(predictions)
+    gt_stats = get_summary_stats(ground_truth)
+    res_stats = get_summary_stats(residuals)
 
-    # print("\n=== Model Evaluation Summary ===")
-    # display_summary_stats(pred_stats, label="Predictions")
-    # display_summary_stats(gt_stats, label="Ground Truth")
-    # display_summary_stats(res_stats, label="Residuals")
+    print("\n=== Model Evaluation Summary ===")
+    display_summary_stats(pred_stats, label="Predictions")
+    display_summary_stats(gt_stats, label="Ground Truth")
+    display_summary_stats(res_stats, label="Residuals")
 
-    # # Visualize results
-    # plot_results(ground_truth, predictions, residuals)
+    # Visualize results
+    plot_results(ground_truth, predictions, residuals)
 
     # # # # Perform SHAP analysis for train, validation, and test sets
     # # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
@@ -228,6 +223,3 @@ if __name__ == "__main__":
 # # https://machinelearningmastery.com/learning-curves-for-diagnosing-machine-learning-model-performance/
 
 # # https://www.thenewatlantis.com/publications/correlation-causation-and-confusion?utm_source=chatgpt.com
-
-
-

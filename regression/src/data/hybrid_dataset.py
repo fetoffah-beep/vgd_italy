@@ -25,7 +25,7 @@ class VGDDataset(Dataset):
         self.seq_len            = seq_len
         self.config_path        = config_path
 
-        self.categorical_vars = {"lulc", "lithology"}
+        
         self.coord_names = {'y':
                                 {'lat', 'latitude', 'y', 'northing', 'north'},
                             'x':
@@ -34,6 +34,8 @@ class VGDDataset(Dataset):
         # Read categories from config
         with open(self.config_path, "r") as f:
             config = yaml.safe_load(f)
+
+        self.categorical_vars = set(config["data"]["categories"].keys())
 
         self.var_categories = config["data"].get("categories", {})
 
@@ -48,12 +50,12 @@ class VGDDataset(Dataset):
             
         # Load the metadata.
         # This file is to contain the position coordinates for the split [train, val or test]
-        self.metadata = pd.read_csv(self.metadata_file)
+        metadata = pd.read_csv(self.metadata_file)
         # self.metadata = self.metadata.iloc[:100]
 
         # Transform the metadata coordinates to lat/lon upto 9 decimal places
         self.transformer = Transformer.from_crs("EPSG:3035", "EPSG:4326", always_xy=True)
-        self.metadata[['lon', 'lat']] = self.metadata.apply(lambda row: pd.Series(self.transformer.transform(row['easting'], row['northing'])), axis=1)
+        self.metadata[['lon', 'lat']] = metadata.apply(lambda row: pd.Series(self.transformer.transform(row['easting'], row['northing'])), axis=1)
         
         # if the split is the trianing set, then compute the transformation parameters
         if self.split == 'training':
@@ -91,7 +93,7 @@ class VGDDataset(Dataset):
 
 
         # # Cache the static and dynamic data
-        print('Cache the static and dynamic data')
+        print(f'Cache the static and dynamic data for the {self.split} set')
         self.static_data = {}
         self.dynamic_data = {}
         self.seismic_tree = {}
@@ -121,8 +123,6 @@ class VGDDataset(Dataset):
             ds['time'] = pd.to_datetime(ds['time'].values)
             
 
-            # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
-            # ds = self.min_max_scale(ds, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
             self.dynamic_data[var_name] = ds
 
         for var_name in sorted(self.stats['mean']['static'].keys()):
@@ -150,16 +150,17 @@ class VGDDataset(Dataset):
     @profile
     def __getitem__(self, item_idx):
         # idx, time_idx = self.data_points[item_idx]
-        idx = item_idx // (len(self.data_time) - self.seq_len)
-        time_idx = item_idx % (len(self.data_time) - self.seq_len)
+        idx         = item_idx // (len(self.data_time) - self.seq_len)
+        time_idx    = item_idx % (len(self.data_time) - self.seq_len)
 
-        entry = self.metadata.iloc[idx]
+        entry       = self.metadata.iloc[idx]
         
-        easting = entry["easting"]
-        northing = entry["northing"]
-        data_times = self.data_time[time_idx: time_idx + self.seq_len]
-        longitude = entry["lon"]
-        latitude = entry["lat"]
+        easting     = entry["easting"]
+        northing    = entry["northing"]
+        longitude   = entry["lon"]
+        latitude    = entry["lat"]
+        data_times  = self.data_time[time_idx: time_idx + self.seq_len]
+        
         
         # idx, time_idx, easting, northing, data_times, longitude, latitude = self.data_points[idx].values()
         sample = {'predictors': {'static': {}, 
@@ -179,8 +180,8 @@ class VGDDataset(Dataset):
         if not np.isfinite(target):
             raise ValueError(f"Target value is NaN for idx {idx} at time_idx {time_idx + self.seq_len}")
         # Normalize target
-        # target = (target - self.stats['mean']['target']) / self.stats['std']['target']
-        target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
+        target = (target - self.stats['mean']['target']) / self.stats['std']['target']
+        # target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
         sample['target'] = torch.tensor(target, dtype=torch.float32)
 
         # Get dynamic features for times t to t+seq_len-1
@@ -204,12 +205,11 @@ class VGDDataset(Dataset):
                     lon_name: xr.DataArray(lon, dims="points")},
                     method="nearest"
                 ) 
-                # .sel({"time": xr.DataArray(data_times, dims="time")})
+                
 
 
             # Select the time indices corresponding to data_times using interpolation
             sampled = sampled.sel(time=xr.DataArray(data_times, dims="time"), method="nearest").values
-            # sampled = sampled.values
             
             
             # Replace NaNs with the mean value of the variable
@@ -218,8 +218,8 @@ class VGDDataset(Dataset):
                 sampled[nan_mask] = self.stats['mean']['dynamic'][var_name]
 
 
-            # sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
-            sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
+            sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
+            # sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
             sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32)
             
 
@@ -240,10 +240,8 @@ class VGDDataset(Dataset):
                 method="nearest"
             ).values
 
-            # sampled = sampled.values
             
             # Normalize the continuos variables, one hot encode the categories
-
             if var_name in self.categorical_vars:
                 categories = self.var_categories[var_name]
                 cat_to_idx = {int(cat): idx for idx, cat in enumerate(categories)}
@@ -266,8 +264,8 @@ class VGDDataset(Dataset):
                 if np.any(nan_mask):
                     sampled[nan_mask] = self.stats['mean']['static'][var_name]
 
-                # sampled = (sampled - self.stats['mean']['static'][var_name]) / self.stats['std']['static'][var_name]
-                sampled = self.min_max_scale(sampled, self.stats['min']['static'][var_name], self.stats['max']['static'][var_name])
+                sampled = (sampled - self.stats['mean']['static'][var_name]) / self.stats['std']['static'][var_name]
+                # sampled = self.min_max_scale(sampled, self.stats['min']['static'][var_name], self.stats['max']['static'][var_name])
 
             if sampled.ndim == 1:
                 sampled = sampled[None, :] 

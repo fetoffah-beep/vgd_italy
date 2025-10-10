@@ -5,11 +5,14 @@ import numpy as np
 import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from tqdm import tqdm
+import yaml
+
+from src.utils.logger import log_message
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def evaluate_model(model, test_loader, device="cpu", show_plot=True):
+def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True):
     """
     Evaluates the trained model on the test dataset and computes summary stats.
     
@@ -25,6 +28,15 @@ def evaluate_model(model, test_loader, device="cpu", show_plot=True):
     predictions = []
     ground_truth = []
     cmap = cm.get_cmap('viridis')
+
+    with open(config_path) as config_file:
+            config = yaml.safe_load(config_file)
+    
+    target_mean     = config["data"]['stats']["mean"]["target"]
+    target_std      = config["data"]['stats']["std"]["target"]
+    target_mean     = np.array(target_mean)
+    target_std      = np.array(target_std)
+    
     
     with torch.no_grad():  # Disable gradient computation
         for sample in tqdm(test_loader):
@@ -32,19 +44,26 @@ def evaluate_model(model, test_loader, device="cpu", show_plot=True):
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                                
             outputs = model(dyn_inputs, static_input).squeeze()
-            predictions.extend(outputs.cpu().numpy().flatten().tolist())
-            ground_truth.extend(targets.cpu().numpy().flatten().tolist())
+            predictions.extend(outputs.cpu().numpy())
+            ground_truth.extend(targets.cpu().numpy())
 
-    predictions = np.array(predictions)
-    ground_truth = np.array(ground_truth)
+    predictions = np.concatenate(predictions).flatten()
+    ground_truth = np.concatenate(ground_truth).flatten()
+
+    # Denormalise the target and the predictions
+    predictions = (predictions * target_std) + target_mean
+    ground_truth = (ground_truth * target_std) + target_mean
+
     residuals = ground_truth - predictions
     
     mae = mean_absolute_error(ground_truth, predictions)
     mse = mean_squared_error(ground_truth, predictions)
+    rmse = np.sqrt(mean_squared_error(ground_truth, predictions))
     r2 = r2_score(ground_truth, predictions)
 
-    print(f"MAE: {mae:.4f}, MSE: {mse:.4f}, R-squared: {r2:.4f}")
-    
+    with open(f"models/logs/log_{timestamp}.txt", "w") as log_f:
+        log_message(f"\n Stats on the Test dataset \n  MAE: {mae:.4f}, MSE: {mse:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}", log_f)
+
 
     if show_plot:
         num_samples = min(len(predictions), len(ground_truth))

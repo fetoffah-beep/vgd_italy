@@ -2,9 +2,9 @@ aoi_path: r"C:\Users\gmfet\vgd_italy\emilia_aoi\Emilia-Romagna.shp"
 training:
   identifier: vgd
   usecase: displacement
-  epochs: 2
-  batch_size: 2
-  num_workers: 5
+  epochs: 1
+  batch_size: 128
+  num_workers: 20
   seq_len: 50
 model:
   name: CNN-ConvLSTM

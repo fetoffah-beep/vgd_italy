@@ -34,12 +34,12 @@ def get_summary_stats(data):
     iqr = q3 - q1  # Interquartile range
     
     stats = {
-        "mean": torch.mean(data).item(),
-        "median": torch.median(data).item(),
-        "std": torch.std(data, unbiased=False).item(),
-        "min": torch.min(data).item(),
-        "max": torch.max(data).item(),
-        "iqr": iqr
+        "mean":     torch.mean(data).item(),
+        "median":   torch.median(data).item(),
+        "std":      torch.std(data).item(),
+        "min":      torch.min(data).item(),
+        "max":      torch.max(data).item(),
+        "iqr":      iqr
     }
     return stats
 

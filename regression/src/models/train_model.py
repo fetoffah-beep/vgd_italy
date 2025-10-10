@@ -58,12 +58,27 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     patience = 5
     patience_counter = 0
     
-    with open(f"models/logs/log_{timestamp}.txt", "w") as log_f, wandb.init(project="vgd_italy") as run:
+    with open(f"models/logs/log_{timestamp}.txt", "w") as log_f, wandb.init(project="vgd_italy") as run: 
+        # Access the parameter group of the optimizer
+        training_param = optimizer.param_groups[0]
+
+        run.config.update({
+            "learning_rate": training_param.get("lr", learning_rate),
+            "num_epochs": num_epochs,
+            "weight_decay": training_param.get("weight_decay", 0.0), 
+            "optimizer": optimizer.__class__.__name__,
+        })
+
         with open(config_path) as config_file:
             config = yaml.safe_load(config_file)
-        baseline_pred = config["data"]['stats']["mean"]["target"]
+        baseline_pred   = config["data"]['stats']["mean"]["target"]
+        target_mean     = config["data"]['stats']["mean"]["target"]
+        target_std      = config["data"]['stats']["std"]["target"]
 
-        for epoch in range(0, 1):
+        target_mean = np.array(target_mean)
+        target_std = np.array(target_std)
+        
+        for epoch in range(start_epoch, num_epochs):
             model.train()
             training_loss = 0.0
             interval_loss_accum = 0.0
@@ -83,7 +98,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     
                 loss.backward()
                 
-                # Inside your training loop
+                # See the range of the gradients
                 # total_norm = nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
                 # print(f"Gradient norm: {total_norm.item()}")
                 optimizer.step()
@@ -102,7 +117,6 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                     val_targ = []
                     with torch.no_grad():
                         for val_sample in tqdm(val_loader):
-                            # sample = {'predictors': {'static': {}, 'dynamic': {}}, 'target': None, 'coords': (easting, northing)}
                             val_dyn, val_static, val_targets = val_sample['dynamic'], val_sample['static'], val_sample['target']
                             val_dyn, val_static, val_targets = val_dyn.to(device), val_static.to(device), val_targets.to(device)
                 
@@ -120,31 +134,56 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                     # Concatenate predictions and targets
                     val_preds = np.concatenate(val_preds, axis=0).squeeze()
                     val_targets = np.concatenate(val_targ, axis=0).squeeze()
+
+                    # Denormalise the target and the predictions
+                    val_preds = (val_preds * target_std) + target_mean
+                    val_targets = (val_targets * target_std) + target_mean
+
                     
                     # Compute metrics
                     val_mae = mean_absolute_error(val_targets, val_preds)
                     val_rmse = val_rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
                     val_r2 = r2_score(val_targets, val_preds)
-                    
-                    # Predict the mean of the target
-                    
-                    
-                    run.log({
-                            "interval_training_loss": interval_training_loss,
-                            "validation_loss": val_loss,
-                            "validation/MAE": val_mae,
-                            "validation/RMSE": val_rmse,
-                            "validation/R²": val_r2,
-                        }, step=step)
+                    log_message(f"\n Model stats \n MAE: {val_mae:.4f}, RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}", log_f)
 
-
-                    # Mean baseline
+                    
+                    # Compute metrics for Mean baseline
                     baseline_mae = mean_absolute_error(val_targets, np.full_like(val_targets, baseline_pred))
                     baseline_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, baseline_pred)))
                     baseline_r2 = r2_score(val_targets, np.full_like(val_targets, baseline_pred))
-                    log_message(f"\n Baseline stats \n MAE: {baseline_mae:.4f}, RMSE: {baseline_rmse:.4f}, R²: {baseline_r2:.4f}", log_f)
+                    log_message(f"\n Mean Baseline stats \n MAE: {baseline_mae:.4f}, RMSE: {baseline_rmse:.4f}, R²: {baseline_r2:.4f}", log_f)
 
-                    
+                    # Compute metrics for a model that predicts a random number with 0 mean and std of 1
+                    rand_pred = np.random.standard_normal(size=val_targets.shape)
+                    rand_pred = (rand_pred * target_std) + target_mean      # Denormalise to the scale of the target
+
+                    rand_mae = mean_absolute_error(val_targets, np.full_like(val_targets, rand_pred))
+                    rand_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, rand_pred)))
+                    rand_r2 = r2_score(val_targets, np.full_like(val_targets, rand_pred))
+                    log_message(f"\n Random baseline stats \n MAE: {rand_mae:.4f}, RMSE: {rand_rmse:.4f}, R²: {rand_r2:.4f}", log_f)
+
+
+                    run.log({# Training progress
+                                "interval_training_loss": interval_training_loss,
+                                "validation_loss": val_loss,
+
+                                # Model metrics
+                                "model/MAE": val_mae,
+                                "model/RMSE": val_rmse,
+                                "model/R²": val_r2,
+
+                                # Mean baseline metrics
+                                "baseline_mean/MAE": baseline_mae,
+                                "baseline_mean/RMSE": baseline_rmse,
+                                "baseline_mean/R²": baseline_r2,
+
+                                # Random baseline metrics
+                                "baseline_random/MAE": rand_mae,
+                                "baseline_random/RMSE": rand_rmse,
+                                "baseline_random/R²": rand_r2,
+                            },
+                                step=step,
+                        )                   
                     
                     
                     
