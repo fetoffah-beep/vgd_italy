@@ -4,7 +4,6 @@ Created on Mon Apr 15 09:25:04 2024
 
 @author: 39351
 """
-print('importing libraries')
 import time
 
 start_time = time.time()
@@ -77,7 +76,7 @@ def main():
     val_dataset   = VGDDataset('validation',    "../emilia_aoi/val_metadata.csv",   'config.yaml', "../data", seq_len, time_split=False)
     test_dataset  = VGDDataset('test',          "../emilia_aoi/test_metadata.csv",  'config.yaml', "../data", seq_len, time_split=False)
     
-    # # Example: print the first sample
+    # # # Example: print the first sample
     # sample = test_dataset[0]
 
     # print("Static shape:", sample["static"].shape)
@@ -172,10 +171,10 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        mp.set_start_method('spawn')
-    except RuntimeError:
-        pass
+    # try:
+    #     mp.set_start_method('spawn')
+    # except RuntimeError:
+    #     pass
     main()
     
 

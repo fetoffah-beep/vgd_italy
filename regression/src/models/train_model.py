@@ -51,7 +51,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     validation_losses = []
     
     
-    log_interval = 7000  # validate every 10,000 steps
+    log_interval = 1000  # validate every 10,000 steps
     step = 0
     # scheduler = StepLR(optimizer, step_size=10, gamma=0.1)  
     best_val_loss = float('inf')
@@ -110,6 +110,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     
                 # Interval validation
                 if step % log_interval == 0:
+                    print('iterating over the validation set ...............')
                     interval_training_loss = interval_loss_accum / interval_step_count
                     model.eval()
                     val_loss = 0.0
@@ -185,11 +186,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                                 step=step,
                         )                   
                     
-                    
-                    
-    
-                    log_message(f"\n Validation stats \n MAE: {val_mae:.4f}, RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}", log_f)
-    
+
     
                     log_message(f"\n [Step {step}] Interval Training Loss: {interval_training_loss:.4f} | Validation Loss: {val_loss:.4f}", log_f)
                     interval_loss_accum = 0.0

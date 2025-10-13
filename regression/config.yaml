@@ -3,8 +3,8 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 1
-  batch_size: 128
-  num_workers: 20
+  batch_size: 1024
+  num_workers: 0
   seq_len: 50
 model:
   name: CNN-ConvLSTM
@@ -60,6 +60,7 @@ data:
         ksat: 47.61066436767578
         lithology: None
         lulc: None
+        land_cover: 50
         population_density_2020_1km: 782.9249267578125
         sand: 130.4551544189453
         silt: 367.8340759277344
@@ -84,6 +85,7 @@ data:
         dem: 262.3697509765625
         genua: 0.0010724844178184867
         ksat: 9.602312088012695
+        land_cover: 15.342401
         population_density_2020_1km: 1521.71044921875
         sand: 86.97979736328125
         silt: 176.58908081054688
