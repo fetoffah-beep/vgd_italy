@@ -4,15 +4,9 @@ Created on Mon Apr 15 09:25:04 2024
 
 @author: 39351
 """
-import time
 
-start_time = time.time()
-import os
 import yaml
-import argparse
 import torch
-import wandb
-import geopandas as gpd
 from src.models.hybrid_model import VGDModel
 from src.data.dataloader import VGDDataLoader
 from src.data.hybrid_dataset import VGDDataset
@@ -24,13 +18,12 @@ from src.evaluation.evaluation import evaluate_model
 from src.evaluation.shap_plot import shap_plot
 from src.evaluation.summary_stats import get_summary_stats, display_summary_stats
 from src.evaluation.visualization import plot_results
-from torchvision.transforms import Compose
-from src.data.transforms.transforms import NormalizeTransform
+import time
 
+start_time = time.time()
 
 from line_profiler import profile
 import line_profiler 
-import torch.multiprocessing as mp
 
 print('libraries import done')
 profile = line_profiler.LineProfiler()
@@ -41,14 +34,6 @@ def main():
     with open("config.yaml") as config_file:
         config = yaml.safe_load(config_file)
         
-    
-    dyn_mean        = config["data"]['stats']["mean"]["dynamic"]
-    dyn_std         = config["data"]['stats']["std"]["dynamic"]
-    static_mean     = config["data"]['stats']["mean"]["static"]
-    static_std      = config["data"]['stats']["std"]["static"]
-    target_mean     = config["data"]['stats']["mean"]["target"]
-    target_std      = config["data"]['stats']["std"]["target"]
-    
    
     
     # Configuration
@@ -56,7 +41,7 @@ def main():
     hidden_size         = config["model"]["hidden_layers"]
     num_epochs          = config["training"]["epochs"]
     learning_rate       = config["optimizer"]["init_args"]["lr"]
-    model_optimizer     = config["optimizer"]["class_path"]
+    model_optimizer     = None #config["optimizer"]["class_path"]
     batch_size          = config["training"]["batch_size"]
     num_workers         = config["training"]["num_workers"]
     device              = config["model"]["device"]
@@ -101,17 +86,23 @@ def main():
     # Initialize the model
     model = VGDModel(test_dataset[0]['dynamic'].shape[1], test_dataset[0]['static'].shape[0], hidden_size, output_size)
 
+    model_optimizer = torch.optim.Adam(
+                        model.parameters(),
+                        lr=learning_rate,
+                        weight_decay=0.02
+                    )
+    
     # Load checkpoint or initialize training
     model, optimizer, start_epoch = load_checkpoint(
         checkpoint_path, model, learning_rate, device, optimizer=model_optimizer
     )
      
         
-    # print(model)
-    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    # print('Optimizer: ', optimizer)
-    # print('Start epoch: ', start_epoch)
+    print(model)
+    print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print('Optimizer: ', optimizer)
+    print('Start epoch: ', start_epoch)
     
     
     # Train the model
@@ -130,8 +121,7 @@ def main():
     
     # Test/Evaluate the model
     print("Training complete. Evaluating the model on the test set.")
-    model.eval()
-
+    
     results = evaluate_model(model, test_loader, 'config.yaml', device=device)
     predictions, ground_truth, residuals = (
         results["predictions"],
@@ -152,20 +142,23 @@ def main():
     # Visualize results
     plot_results(ground_truth, predictions, residuals)
 
-    # # # # Perform SHAP analysis for train, validation, and test sets
-    # # # train_shap = compute_shap(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # # # shap_plot(train_shap)
+    # # Perform SHAP analysis for train, validation, and test sets
+    dyn_features = ['precipitation', 'drought_code', 'temperature']
+    static_features = ["bulk_density", "clay_content", "dem", "land_cover", "population_density_2020_1km", "sand", "silt", "slope", "soil_organic_carbon", "topo_wetness_index", "vol water content at -10", "vol water content at -1500 kPa", "vol water content at -33 kPa"]
 
-    # # # # val_shap = compute_shap(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
+    # train_shap = compute_shap(model, train_loader, device, dyn_features, static_features, "Train")
+    # shap_plot(train_shap)
+
+    # # # # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
     # # # # shap_plot(val_shap)
 
-    # # # # test_shap = compute_shap(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
-    # # # # shap_plot(test_shap)
+    test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
+    shap_plot(test_shap)
 
-    # # # # Perform LIME analysis for train, validation, and test sets
-    # # # compute_lime(model, train_loader, device, pred_vars[0], pred_vars[1], "Train")
-    # # # # compute_lime(model, val_loader, device, pred_vars[0], pred_vars[1], "Validation")
-    # # # # compute_lime(model, test_loader, device, pred_vars[0], pred_vars[1], "Test")
+    # Perform LIME analysis for train, validation, and test sets
+    # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
+    # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
+    compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
 
     print("Time taken:", time.time() - start_time)
 

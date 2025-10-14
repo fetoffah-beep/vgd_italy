@@ -43,15 +43,15 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     model.to(device)
 
     # Loss function (Mean Squared Error for regression)
-    # loss_fun = nn.MSELoss() #nn.SmoothL1Loss()
-    loss_fun = nn.HuberLoss()
+    loss_fun = nn.MSELoss() #nn.SmoothL1Loss()
+    # loss_fun = nn.HuberLoss()
     grad_clip = 2.5
     
     training_losses = []  
     validation_losses = []
     
     
-    log_interval = 1000  # validate every 10,000 steps
+    log_interval = 10000  # validate every 10,000 steps
     step = 0
     # scheduler = StepLR(optimizer, step_size=10, gamma=0.1)  
     best_val_loss = float('inf')

@@ -43,12 +43,14 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
             dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
             dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                                
-            outputs = model(dyn_inputs, static_input).squeeze()
-            predictions.extend(outputs.cpu().numpy())
-            ground_truth.extend(targets.cpu().numpy())
+            outputs = model(dyn_inputs, static_input)
+            targets = targets.unsqueeze(-1)
 
-    predictions = np.concatenate(predictions).flatten()
-    ground_truth = np.concatenate(ground_truth).flatten()
+            predictions.append(outputs.cpu().numpy())
+            ground_truth.append(targets.cpu().numpy())
+
+    predictions = np.concatenate(predictions, axis=0).squeeze()
+    ground_truth = np.concatenate(ground_truth, axis=0).squeeze()
 
     # Denormalise the target and the predictions
     predictions = (predictions * target_std) + target_mean

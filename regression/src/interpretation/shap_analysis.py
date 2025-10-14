@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tqdm import tqdm
 import xarray as xr
+import time
+
+time_start = time.time()
 
 
 def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_name, explainer_type="deep"):
@@ -26,13 +29,14 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     - dataset_name: Name of the dataset.
     - explainer_type: Type of SHAP explainer ('gradient', 'kernel', 'deep', 'tree', or 'auto').
     """
+    print('computing shap values')
     model.to(device)
     model.eval() 
     
     
     
     sample_batch = next(iter(data_loader))
-    explainer_data = [sample_batch[0].to(device), sample_batch[1].to(device)]
+    explainer_data = [sample_batch['dynamic'].to(device), sample_batch['static'].to(device)]
 
     # Initialize the explainer with the model and the device-correct sample data
     explainer = shap.DeepExplainer(model, explainer_data)
@@ -46,7 +50,9 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     
     shap_data = []
-    for sample in tqdm(data_loader):
+    for idx, sample in enumerate(tqdm(data_loader)):
+        if idx > 1:
+            break
         dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
         dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
         eastings, northings = sample['coords']
@@ -77,6 +83,8 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
                     'northing': northings[sample_idx].item(),
                     **feature_dict,
                 })
+
+        
 
 
     shap_df = pd.DataFrame(shap_data)
@@ -111,7 +119,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
         }
     )
 
-    ds.to_netcdf('output/shap_values.nc')
+    ds.to_netcdf(f'output/shap_values{time_start}.nc')
     
     return ds
 

@@ -4,7 +4,7 @@ training:
   usecase: displacement
   epochs: 1
   batch_size: 1024
-  num_workers: 0
+  num_workers: 20
   seq_len: 50
 model:
   name: CNN-ConvLSTM
