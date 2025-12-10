@@ -25,10 +25,12 @@ def plot_results(ground_truth, predictions, residuals):
     plt.scatter(gt, preds, alpha=0.5, color="blue", label="Predictions")
     identity_line = [gt.min(), gt.max()]
     plt.plot(identity_line, identity_line, color="red", linestyle="--", label="Ideal Fit")
-    plt.xlabel("Ground Truth")
-    plt.ylabel("Predictions")
-    plt.title("Ground Truth vs Predictions")
-    plt.legend()
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xlabel("Ground Truth", fontsize=14)
+    plt.ylabel("Predictions", fontsize=14)
+    plt.title("Ground Truth vs Predictions", fontsize=16)
+    plt.legend(fontsize=12)
     plt.grid(True)
 
     # Residuals Histogram
@@ -41,10 +43,12 @@ def plot_results(ground_truth, predictions, residuals):
         plt.hist(res, bins=30, alpha=0.7, color="blue", edgecolor="black", density=True) 
         
     plt.axvline(0, color="red", linestyle="--", label="Zero Residual")
-    plt.xlabel("Residuals")
-    plt.ylabel("Density")
-    plt.title("Distribution of Residuals")
-    plt.legend()
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.xlabel("Residuals", fontsize=14)
+    plt.ylabel("Density", fontsize=14)
+    plt.title("Distribution of Residuals", fontsize=16)
+    plt.legend(fontsize=12)
     plt.grid(True)
 
     plt.tight_layout()

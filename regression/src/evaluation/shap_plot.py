@@ -7,6 +7,9 @@ Created on Sun Mar 16 13:12:45 2025
 import numpy as np
 import shap
 import matplotlib.pyplot as plt
+import datetime
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
 
 def shap_plot(ds):
     
@@ -14,8 +17,12 @@ def shap_plot(ds):
     shap_values = np.stack([ds[feature].values.flatten() for feature in feature_names], axis=1)
 
      ########### Summary plot ###########
+    plt.close()
     shap.summary_plot(shap_values, feature_names=feature_names, title=f"Global Feature Importance")
+    plt.savefig(f'output/global_feature_importance_1_{timestamp}.png')
     shap.summary_plot(shap_values, feature_names=feature_names, title=f"Global Feature Importance", plot_type="bar")
+    
+    plt.savefig(f'output/global_feature_importance_2_{timestamp}.png')
     
     
     
@@ -24,20 +31,42 @@ def shap_plot(ds):
     base_value = np.mean(shap_values)
     feature_values = np.zeros_like(shap_values)
     shap.force_plot(base_value, shap_values, feature_values, feature_names=feature_names, matplotlib=True)
+    plt.savefig(f'output/force_plot_{timestamp}.png')
     
-    ########### Spatial plot ###########
-    for feature_name in ds.data_vars:
-        # Extract SHAP values for the current feature
-        feature_data = ds[feature_name]
+    # ########### Spatial plot ###########
+    # for feature_name in ds.data_vars:
+    #     # Extract SHAP values for the current feature
+    #     feature_data = ds[feature_name]
 
-        # Create spatial plot
-        plt.figure()
-        plt.scatter(ds['easting'], ds['northing'], c=feature_data.values.flatten(), cmap='viridis')
-        plt.colorbar(label='SHAP Value')
-        plt.xlabel('Easting')
-        plt.ylabel('Northing')
-        plt.title(f'SHAP Values for Feature: {feature_name}')
-        plt.show()
+    #     # Create spatial plot
+    #     plt.figure()
+    #     plt.scatter(ds['easting'], ds['northing'], c=feature_data.values[:len(ds['easting'])], cmap='viridis')
+    #     plt.colorbar(label='SHAP Value')
+    #     plt.xlabel('Easting')
+    #     plt.ylabel('Northing')
+    #     plt.title(f'SHAP Values for Feature: {feature_name}')
+    #     plt.savefig(f'output/{feature_name}_importance_{timestamp}.png')
+        
+    # for feature_name in ds.data_vars:
+    #     feature_data = ds[feature_name]
+    
+    #     easting, northing = np.meshgrid(ds['easting'], ds['northing'])
+    #     plt.figure()
+    #     plt.scatter(
+    #         easting.flatten(), 
+    #         northing.flatten(), 
+    #         c=feature_data.values.flatten(), 
+    #         cmap='viridis', s=15
+    #     )
+    #     plt.colorbar(label='SHAP Value')
+    #     plt.xlabel('Easting')
+    #     plt.ylabel('Northing')
+    #     plt.title(f'SHAP Values for Feature: {feature_name}')
+    #     plt.savefig(f'output/{feature_name}_importance_{timestamp}.png')
+    
+
+
+        
         
         
     ########### Feature wih highest SHAP value Spatial plot  ###########
@@ -52,7 +81,7 @@ def shap_plot(ds):
 
     shap_data['highest_feature'] = highest_shap_feature
 
-    plt.figure()
+    plt.figure(figsize=(20, 8))
     unique_features = shap_data['highest_feature'].unique()
     colors = plt.cm.get_cmap('viridis', len(unique_features)) #create a colormap.
 
@@ -63,6 +92,13 @@ def shap_plot(ds):
     plt.xlabel('Easting')
     plt.ylabel('Northing')
     plt.title('Spatial Distribution of Highest SHAP Value Features')
-    plt.legend()
-    plt.show()
+    plt.legend(
+        title="Feature",
+        bbox_to_anchor=(1.05, 1),
+        loc='upper left',
+        borderaxespad=0.,
+        frameon=False
+    )
+    plt.savefig(f'output/feature_importance_distribution{timestamp}.png')
+    
     

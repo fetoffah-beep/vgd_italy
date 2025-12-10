@@ -31,28 +31,19 @@ class VGDDataLoader:
         self.data_loader = self._create_dataloaders()
         
 
-        
-
     def _create_dataloaders(self):
-        """
-        Create DataLoader for the dataset
-
-
-        Returns:
-            DataLoader: dataloader for the dataset.
-        """
         pin_memory = torch.cuda.is_available()
         persistent_workers = self.num_workers > 0
+        # prefetch_factor = 1
+
+
 
         data_loader = DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=self.shuffle,
-                                  pin_memory=pin_memory, persistent_workers =persistent_workers)
+                                  pin_memory=pin_memory, persistent_workers =persistent_workers) #, prefetch_factor=prefetch_factor)
         
         return data_loader
 
 
     @property
     def dataloader(self):
-        """
-        Returns the DataLoaders for the datasets.
-        """
         return self.data_loader

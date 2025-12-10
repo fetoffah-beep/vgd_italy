@@ -56,12 +56,15 @@ class VGDModel(nn.Module):
         super(VGDModel, self).__init__()
         
         self.output_size = 1
-        self.hidden_dim = [128] #[128,64,32] #[128, 64, 64]
+        self.hidden_dim = [16] #[128,64,32] #[128, 64, 64]
         self.kernel_size = (3,3)
         self.num_layers= 1 #3
         
-        self.num_static_features = static_feat
+        self.num_static_features = 44 #static_feat
         self.num_dyn_features = dyn_feat
+        
+        self.lulc_embeddings = nn.Embedding(11, 1)
+        self.lithology_embeddings = nn.Embedding(19, 1)
         
         
         
@@ -92,40 +95,23 @@ class VGDModel(nn.Module):
                             )
         
         self.fc_static= nn.Sequential(
-                                nn.Linear(64*5*5*25, 256),
+                                nn.LazyLinear(256), #nn.Linear(64*5*5*25, 256),
                                 nn.ReLU()
                             )
         
         self.fc_dynamic = nn.Sequential(
-                                nn.Linear(256*5*5*25, 256),
+                                nn.LazyLinear(256), # nn.Linear(256*5*5*25, 256),
                                 nn.ReLU()
                             )
         
         self.fc_fused = nn.Sequential(
-                                    nn.Linear(256*2, 128),
-                                    nn.ReLU(),
-                                    # nn.Dropout(0.1),
-                                    nn.Linear(128, 1)
-                                    )
+                                nn.Linear(256*2, 128),
+                                nn.ReLU(),
+                                # nn.Dropout(0.1),
+                                nn.Linear(128, 1)
+                            )
         
-        
-        
-        
-        
-        # self.fusion_layer = ConvLSTM(
-        #     input_dim=160, 
-        #     hidden_dim=[128],
-        #     kernel_size=(3, 3),
-        #     num_layers=1,
-        #     dropout=0.2,
-        #     batch_first=True,
-        # )
-        
-        # self.final_layer = nn.Conv2d(in_channels=128,
-        #                               out_channels=self.output_size,
-        #                               kernel_size=1
-        #                               )
-        
+
         
         
 
@@ -154,7 +140,23 @@ class VGDModel(nn.Module):
 
         
         ################# CNN for static features #################
+        lithology_embedding = self.lithology_embeddings(static_input[:, 5, :, :].long()).squeeze(0).permute(2, 0, 1)
+        lulc_embeddings = self.lulc_embeddings(static_input[:, 6, :, :].long()).squeeze(0).permute(2, 0, 1)
+        
+        # lith_emb = lithology_embedding.permute(0, 3, 1, 2)
+        # lulc_emb = lulc_embeddings.permute(0, 3, 1, 2) 
+        
+        static_input[:, 5, :, :] = lithology_embedding
+        static_input[:, 6, :, :] = lulc_embeddings
+
+        
+        
         x_cnn = static_input[:, :, :, :]
+        
+        
+        
+        
+        
         x_cnn = self.static_model(x_cnn)
         
         static_out = x_cnn.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
@@ -182,20 +184,3 @@ class VGDModel(nn.Module):
     
         return output
     
-    
-        
-        # next_timestep_features = fused_output[:, -1]
-        
-        
-        # # fused_output = fused_output.view(batch_size, time_frame, -1, fused_features.size(3), fused_features.size(4))
-
-        # # Predict displacement
-        # displacement_predictions = self.final_layer(next_timestep_features)
-        # output = F.adaptive_avg_pool2d(displacement_predictions, (1, 1)).squeeze(-1).squeeze(-1)  # [B, 1]
-        
-        # # output = displacement_predictions.view(batch_size, time_frame, self.output_size, fused_output.size(3), fused_output.size(4))
-        # # output = output[:, -1, :, output.size(-2)//2, output.size(-1)//2]
-
-
-
-      

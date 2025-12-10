@@ -5,6 +5,7 @@ Purpose: SHAP-based interpretation of model predictions.
 Content:
 - Functions to calculate and plot SHAP values.
 """
+
 import torch
 import shap
 import numpy as np
@@ -15,9 +16,15 @@ from tqdm import tqdm
 import xarray as xr
 import time
 
+from line_profiler import profile
+import line_profiler 
+
+
+profile = line_profiler.LineProfiler()
+
 time_start = time.time()
 
-
+@profile
 def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_name, explainer_type="deep"):
     """
     Compute and visualize SHAP values using different explainers.
@@ -37,6 +44,8 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     sample_batch = next(iter(data_loader))
     explainer_data = [sample_batch['dynamic'].to(device), sample_batch['static'].to(device)]
+    
+
 
     # Initialize the explainer with the model and the device-correct sample data
     explainer = shap.DeepExplainer(model, explainer_data)
@@ -50,39 +59,41 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     
     shap_data = []
-    for idx, sample in enumerate(tqdm(data_loader)):
-        if idx > 1:
+    for sample_idx, sample in enumerate(tqdm(data_loader)):
+        if sample_idx > 100:
             break
+        
         dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
         dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
         eastings, northings = sample['coords']
 
+        shap_values = explainer.shap_values([dyn_inputs, static_input], check_additivity=False)
 
-
-
-        shap_values = explainer.shap_values([dyn_inputs, static_input])
         
-        for output_idx in range(len(shap_values)):
-            dyn_shap_values = shap_values[output_idx][0]
-            stat_shap_values = shap_values[output_idx][1]
+        dyn_shap_values = shap_values[0]
+        stat_shap_values = shap_values[1]
+        
             
-            for sample_idx in range(len(dyn_shap_values)):
-                dyn_sample_shap = dyn_shap_values[sample_idx]
-                stat_sample_shap = stat_shap_values[sample_idx]
-                
-                dyn_means = np.mean(dyn_sample_shap, axis=(0, 2, 3))  # Average over time, height, width
-                stat_means = np.mean(stat_sample_shap, axis=(1, 2))  # Average over height, width
+        for sample_idx in tqdm(range(len(dyn_shap_values))):
+            dyn_sample_shap = dyn_shap_values[sample_idx]
+            stat_sample_shap = stat_shap_values[sample_idx]
+            
+            dyn_means = np.mean(dyn_sample_shap, axis=(0, 2, 3, 4))  # Average over time, height, width
+            stat_means = np.mean(stat_sample_shap, axis=(1, 2, 3))  # Average over height, width
 
-                dynamic_feature_dict = {pred_vars[i]: dyn_means[i].item() for i in range(len(pred_vars))}
-                static_feature_dict = {static_vars[i]: stat_means[i].item() for i in range(len(static_vars))}
+            dynamic_feature_dict = {pred_vars[i]: dyn_means[i].item() for i in range(len(pred_vars))}
+            static_feature_dict = {static_vars[i]: stat_means[i].item() for i in range(len(static_vars))}
 
-                feature_dict = {**dynamic_feature_dict, **static_feature_dict}
+            feature_dict = {**dynamic_feature_dict, **static_feature_dict}
 
-                shap_data.append({
-                    'easting': eastings[sample_idx].item(),
-                    'northing': northings[sample_idx].item(),
-                    **feature_dict,
-                })
+            shap_data.append({
+                'easting': eastings[sample_idx].item(),
+                'northing': northings[sample_idx].item(),
+                **feature_dict,
+            })
+        #     break
+        # break
+        
 
         
 
@@ -103,7 +114,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
         feature_arrays[feature_name] = np.zeros((len(northings), len(eastings)))  # Initialize with zeros
 
     # Populate feature arrays
-    for row in shap_df.itertuples():
+    for _, row in shap_df.iterrows():
         easting_idx = np.where(eastings == row.easting)[0][0]
         northing_idx = np.where(northings == row.northing)[0][0]
 
@@ -138,43 +149,20 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
         
     
     
-    
-# len(dyn_shap_values_all)
-# Out[15]: 15
-
-# len(dyn_shap_values_all[0])
-# Out[16]: 1
-
-# len(dyn_shap_values_all[0][0])
-# Out[17]: 15
-
-# len(dyn_shap_values_all[0][0][0])
-# Out[18]: 3
-
-# len(dyn_shap_values_all[0][0][0][0])
-# Out[19]: 5
-
-# len(dyn_shap_values_all[0][0][0][0][0])
-# Out[20]: 5
+        # print(len(shap_values)) > 2
+        # print(len(shap_values[0])) >16
+        # print(len(shap_values[0][0])) > 50
+        # print(len(shap_values[0][0][0])) > 3
+        # print(len(shap_values[0][0][0][0])) > 5
+        # print(len(shap_values[0][0][0][0][0])) > 5
+        # print(len(shap_values[0][0][0][0][0][0])) > 1
+        
+        
 
 
-# len(shap_values)
-# Out[25]: 15
 
-# len(shap_values[0])
-# Out[26]: 2
 
-# len(shap_values[0][0])
-# Out[27]: 1
 
-# len(shap_values[0][0][0])
-# Out[28]: 15
 
-# len(shap_values[0][0][0][0])
-# Out[29]: 3
 
-# len(shap_values[0][0][0][0][0])
-# Out[30]: 5
 
-# len(shap_values[0][0][0][0][0][0])
-# Out[31]: 5

@@ -24,6 +24,7 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
     Returns:
         dict: Dictionary containing predictions, ground truth, and residuals.
     """
+    model.to(device)
     model.eval()  # Set model to evaluation mode
     predictions = []
     ground_truth = []
@@ -77,10 +78,12 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
         plt.plot(predictions, label="Predictions", marker="o", linestyle="--", alpha=0.7, color="red")
         plt.scatter(range(num_samples), ground_truth, color=ground_truth_colors, alpha=0.5)
         plt.scatter(range(num_samples), predictions, color=prediction_colors, alpha=0.5)
-        plt.xlabel("Sample Index")
-        plt.ylabel("Displacement")
-        plt.title("Model Predictions vs. Ground Truth")
-        plt.legend()
+        plt.xticks(fontsize=18)
+        plt.yticks(fontsize=18)
+        plt.xlabel("Sample Index", fontsize=22)
+        plt.ylabel("Displacement", fontsize=22)
+        plt.title("Model Predictions vs. Ground Truth", fontsize=25)
+        plt.legend(fontsize=22)
         plt.grid()
         plt.savefig(f'output/predictions_{timestamp}.png')
     

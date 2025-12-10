@@ -1,3 +1,6 @@
-Precipitation
 drought_code
+precipitation
+seismic_magnitude
+ssm
 temperature
+twsan

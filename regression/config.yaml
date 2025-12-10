@@ -3,9 +3,9 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 1
-  batch_size: 1024
-  num_workers: 20
-  seq_len: 50
+  batch_size: 48
+  num_workers: 24
+  seq_len: 122
 model:
   name: CNN-ConvLSTM
   input_size: null
@@ -39,7 +39,7 @@ data:
     - 18
     - 20
     lulc:
-    - 10
+    - 10e
     - 20
     - 30
     - 40
@@ -60,7 +60,7 @@ data:
         ksat: 47.61066436767578
         lithology: None
         lulc: None
-        land_cover: 50
+        # land_cover: 50
         population_density_2020_1km: 782.9249267578125
         sand: 130.4551544189453
         silt: 367.8340759277344
@@ -76,7 +76,7 @@ data:
         seismic_magnitude: 5.981808135402389e-05
         ssm: 8.681095123291016
         temperature: 0.657178521156311
-        twsan: -1.9043378829956055
+        # twsan: -1.9043378829956055
       target: -5.6704888343811035
     std:
       static:
@@ -85,7 +85,7 @@ data:
         dem: 262.3697509765625
         genua: 0.0010724844178184867
         ksat: 9.602312088012695
-        land_cover: 15.342401
+        # land_cover: 15.342401
         population_density_2020_1km: 1521.71044921875
         sand: 86.97979736328125
         silt: 176.58908081054688
@@ -101,7 +101,7 @@ data:
         seismic_magnitude: 0.0032310467213392258
         ssm: 33.33436965942383
         temperature: 4.559828281402588
-        twsan: 1.119337558746338
+        # twsan: 1.119337558746338
       target: 9.522238731384277
     min:
       static:
@@ -110,6 +110,7 @@ data:
         dem: -10.04233615921024
         genua: 0.004019205405045377
         ksat: 31.105897678366386
+        # land_cover: 10
         population_density_2020_1km: 0.0
         sand: 0.0
         silt: 0.0
@@ -125,7 +126,7 @@ data:
         seismic_magnitude: 0.0
         ssm: 0.0
         temperature: -22.514129638671875
-        twsan: -5.5725226402282715
+        # twsan: -5.5725226402282715
       target: -246.5
     max:
       static:
@@ -134,6 +135,7 @@ data:
         dem: 2159.288511715335
         genua: 0.01183513781892867
         ksat: 107.80093022389784
+        # land_cover: 110
         population_density_2020_1km: 18228.511354503684
         sand: 548.6847115175156
         silt: 613.3401915143922
@@ -149,12 +151,12 @@ data:
         seismic_magnitude: 2.0
         ssm: 126.5
         temperature: 35.40116500854492
-        twsan: 0.31184667348861694
+        # twsan: 0.31184667348861694
       target: 70.30000305175781
 optimizer:
   class_path: torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
   init_args:
-    lr: 1.0e-06
+    lr: 1.0e-05
     weight_decay: 0.1
 lr_scheduler:
   class_path: ReduceLROnPlateau
