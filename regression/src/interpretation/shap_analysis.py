@@ -48,6 +48,9 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
 
     # Initialize the explainer with the model and the device-correct sample data
+    #     To use SHAP, we’ll first create a DeepExplainer object by passing it our model and a
+    # subset of examples from our training set. Then we’ll get the attribution values for the
+    # first 10 examples in our test set:
     explainer = shap.DeepExplainer(model, explainer_data)
     # explainer = shap.DeepExplainer(model, next(iter(data_loader))[:2]) #get a sample batch for the explainer
 

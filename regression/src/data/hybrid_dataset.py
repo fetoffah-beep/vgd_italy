@@ -1,14 +1,11 @@
 import os
-import time
 import torch
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import xarray as xr
-import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from statsmodels.tsa.seasonal import seasonal_decompose
+# from statsmodels.tsa.seasonal import seasonal_decompose
 from pyproj import Transformer
 import yaml
 from scipy.spatial import cKDTree
@@ -34,6 +31,7 @@ def transform_neighbors(row, transformer):
 
 
 class VGDDataset(Dataset):
+    @profile
     def __init__(self, split, metadata_file, config_path, data_dir, seq_len, time_split=False):
         super(VGDDataset, self).__init__()
         self.split              = split
@@ -66,6 +64,16 @@ class VGDDataset(Dataset):
 
         self.var_categories = config["data"].get("categories", {})
 
+        self.cat_indices = {}
+
+        for var_name, categories in self.var_categories.items():
+            self.cat_indices[var_name] = {
+                str(category): idx 
+                for idx, category in enumerate(categories)
+            }
+
+
+
         # # Mask, already in EPSG 3035 so no need to reproject
         # print('opening the mask file')
         # mask_path = os.path.join(self.data_dir, "mask.nc")
@@ -80,7 +88,14 @@ class VGDDataset(Dataset):
         # Load the metadata.
         # This file is to contain the position coordinates for the split [train, val or test]
         print('Reading metadata ....')
-        self.metadata = pd.read_csv(self.metadata_file)
+        self.metadata = pd.read_csv(self.metadata_file, engine='pyarrow', dtype='int32')
+
+        # Partitiion the points into patches, load a subset of the data for each patch to reduce memory usage
+        self.metadata['patch_id'] = ((self.metadata['easting'] // 100000).astype(int).astype(str) + '_' +
+                                     (self.metadata['northing'] // 100000).astype(int).astype(str))
+        
+
+
 
         # Transform the metadata coordinates, and the neighbouring points to lat/lon upto 9 decimal places
         print(f'Transforming {self.split} metadata to EPSG 4326')
@@ -110,14 +125,6 @@ class VGDDataset(Dataset):
 
         # self.metadata.to_csv(f"{self.split}_metadata_epsg4326.csv", index=False)
 
-
-
-        # # Get the bounds of metadata points
-        # min_lon  = self.metadata['lon'].min()
-        # max_lon  = self.metadata['lon'].max()
-        # min_lat  = self.metadata['lat'].min()
-        # max_lat  = self.metadata['lat'].max()
-
         # if the split is the trianing set, then compute the transformation parameters
         print('Computing stats on the training data ....')
         if self.split == 'training':
@@ -135,7 +142,7 @@ class VGDDataset(Dataset):
             target_path = os.path.join(self.data_dir, "test/targets.npy")
         
             
-        self.target = np.load(target_path, mmap_mode='r')
+        self.target = np.load(target_path).astype(np.float32)
 
 
         # Load the file containing the times
@@ -177,6 +184,8 @@ class VGDDataset(Dataset):
     
     @profile
     def __getitem__(self, item_idx):
+
+        # use psutils
         
         idx         = item_idx // (len(self.data_time) - self.seq_len)
         time_idx    = item_idx % (len(self.data_time) - self.seq_len)
@@ -188,7 +197,7 @@ class VGDDataset(Dataset):
         pnt_neighbors = entry['neighbors']
         lon, lat = pnt_neighbors[:, 0], pnt_neighbors[:, 1]
 
-        min_lat, min_lon, max_lat, max_lon = lat.min()-0.5, lon.min()-0.5, lat.max()+0.5, lon.max()+0.5
+        # min_lat, min_lon, max_lat, max_lon = lat.min()-0.5, lon.min()-0.5, lat.max()+0.5, lon.max()+0.5
         
         
         # idx, time_idx, easting, northing, data_times, longitude, latitude = self.data_points[idx].values()
@@ -204,11 +213,10 @@ class VGDDataset(Dataset):
         
         data_times  = self.data_time[time_idx: time_idx + self.seq_len]
 
-        
         # Normalize target
         target = (target - self.stats['mean']['target']) / self.stats['std']['target']
         # target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
-        sample['target'] = torch.tensor(target, dtype=torch.float32)
+        sample['target'] = torch.tensor(target)
 
         # # Get dynamic features for times t to t+seq_len-1
         for var_name in sorted(self.stats['mean']['dynamic'].keys()):
@@ -220,21 +228,22 @@ class VGDDataset(Dataset):
                 sampled = ds[var_name].isel(point=xr.DataArray(indices, dims="points")).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").values.reshape(-1, 5, 5)
 
             else:
-                lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
-                lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-                if lat_name is None or lon_name is None:
-                    raise ValueError(f"Could not find latitude/longitude coordinates in {var_name}. Have only {list(ds.coords.keys())}")
+                # lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+                # lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+                # if lat_name is None or lon_name is None:
+                #     raise ValueError(f"Could not find latitude/longitude coordinates in {var_name}. Have only {list(ds.coords.keys())}")
                 
 
 
-                ds = ds[var_name].sel({lat_name: slice(max_lat, min_lat),
-                            lon_name: slice(min_lon, max_lon)})
+                # ds = ds.sel({'latitude': slice(max_lat, min_lat),
+                #             'longitude': slice(min_lon, max_lon)})
                 
-                sampled = ds.sel(
-                    {lat_name: xr.DataArray(lat, dims="points"),
-                    lon_name: xr.DataArray(lon, dims="points")},
-                    method="nearest"
-                ).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").values.reshape(-1, 5, 5)
+                # use the .isel method
+                sampled = ds.where(ds.notnull()).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").sel(
+                            {'latitude': xr.DataArray(lat, dims="points"),
+                            'longitude': xr.DataArray(lon, dims="points")},
+                            method="nearest"
+                        ).values.reshape(-1, 5, 5)
                 
                 
             # Replace NaNs with the mean value of the variable
@@ -245,7 +254,7 @@ class VGDDataset(Dataset):
 
             sampled = (sampled - self.stats['mean']['dynamic'][var_name]) / self.stats['std']['dynamic'][var_name]
             # sampled = self.min_max_scale(sampled, self.stats['min']['dynamic'][var_name], self.stats['max']['dynamic'][var_name])
-            sample['predictors']['dynamic'][var_name] = torch.tensor(sampled, dtype=torch.float32).unsqueeze(1)
+            sample['predictors']['dynamic'][var_name] = torch.tensor(sampled).unsqueeze(1)
             
 
         # Get static features include categorical variables with one-hot encoding
@@ -254,42 +263,29 @@ class VGDDataset(Dataset):
             
             ds = self.static_data[var_name]
             
-            lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
-            lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-            if lat_name is None or lon_name is None:
-                raise ValueError(f"Could not find latitude/longitude coordinates in {var_name}. Have only {list(ds.coords.keys())}")
+            # lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+            # lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+            # if lat_name is None or lon_name is None:
+            #     raise ValueError(f"Could not find latitude/longitude coordinates in {var_name}. Have only {list(ds.coords.keys())}")
             
             
             # Sample the variable at the point locations using linear interpolation. do not select points with NaN values
-            ds = ds[var_name].sel({lat_name: slice(max_lat, min_lat),
-                        lon_name: slice(min_lon, max_lon)})
+            # ds = ds.sel({'latitude': slice(max_lat, min_lat),
+            #             'longitude': slice(min_lon, max_lon)})
             
-            sampled = ds.sel(
-                {lat_name: xr.DataArray(lat, dims="points"),
-                lon_name: xr.DataArray(lon, dims="points")},
-                method="nearest"
-            ).values.reshape(-1, 5, 5)
+            sampled = ds.where(ds.notnull()).sel(
+                        {'latitude': xr.DataArray(lat, dims="points"),
+                        'longitude': xr.DataArray(lon, dims="points")},
+                        method="nearest"
+                    ).values.reshape(-1, 5, 5)
             
             # Normalize the continuos variables, one hot encode the categories
-            if var_name not in self.categorical_vars:
+            if var_name in self.categorical_vars:
+                # Replace the *raw code* (as string/int) with the sequential index. LULC has 10e as a category
+                for raw_code, cat_idx in self.cat_indices[var_name].items():
+                    sampled[sampled == float(raw_code)] = cat_idx
                 
-                # categories = self.var_categories[var_name]
-                # cat_to_idx = {cat: idx for idx, cat in enumerate(categories)}
-
-                # sampled_flat = sampled.flatten()
-
-                # mapped = []
-                # for val in sampled_flat:
-                #     if np.isnan(val):
-                #         # ----------------------------find the right value to map NaN to----------------------------
-                #         mapped.append(3)
-                #     else:
-                #         mapped.append(cat_to_idx.get(int(val), 3))  
-                #         # if val not found, also fallback to 3
-                # mapped = np.array(mapped).reshape(sampled.shape)
-                # sampled = F.one_hot(torch.tensor(mapped, dtype=torch.long), num_classes=len(categories)).squeeze(0).permute(2, 0, 1)
-               
-            # else:
+            else:
                 # Replace NaNs with the mean value of the variable
                 nan_mask = ~np.isfinite(sampled)
                 if np.any(nan_mask):
@@ -301,7 +297,7 @@ class VGDDataset(Dataset):
 
             
    
-            sample['predictors']['static'][var_name] = torch.tensor(sampled, dtype=torch.float32)
+            sample['predictors']['static'][var_name] = torch.tensor(sampled)
             
           
 
@@ -329,20 +325,40 @@ class VGDDataset(Dataset):
                 "coords": sample['coords']}
     
     def pre_load_data(self):
+        # # Get the bounds of metadata points
+        min_lon  = self.metadata['lon'].min()
+        max_lon  = self.metadata['lon'].max()
+        min_lat  = self.metadata['lat'].min()
+        max_lat  = self.metadata['lat'].max()
+
+        
+
         for var_name in sorted(self.stats['mean']['static'].keys()):
             if self.static_data[var_name] is None:
                 var_path = os.path.join(self.data_dir, "static", f"{var_name}.nc")
                 
-                ds = xr.open_dataset(var_path, engine="netcdf4", chunks='auto', 
-                                    drop_variables=["ssm_noise", "spatial_ref", "band", "crs"])
-            
+                ds = xr.open_dataset(var_path, engine="netcdf4", 
+                                    drop_variables=["ssm_noise", "spatial_ref", "crs"])
+                
+                
+                
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
 
                 try:
                     lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
                     lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-                    # ds = ds.chunk({lat_name: 1000000, lon_name: 1000000})
+
+                    ds = ds.rename({lat_name: 'latitude', lon_name: 'longitude'})
+                    # ds = ds.chunk({'latitude': 10000, 'longitude': 10000})
+                    lat_slice = slice(max_lat+0.5, min_lat-0.5) if ds.latitude[0] > ds.latitude[-1] else slice(min_lat-0.5, max_lat+0.5)
+                    lon_slice = slice(min_lon-0.5, max_lon+0.5) if ds.longitude[0] < ds.longitude[-1] else slice(max_lon+0.5, min_lon-0.5)
+                    ds = ds[var_name].sel(latitude=lat_slice, longitude=lon_slice)
+                    ds['longitude'] = ds['longitude'].astype("float32")
+                    ds['latitude'] = ds['latitude'].astype("float32")
+                    ds = ds.astype("float32").load()
+                    
+                    
                 except Exception:
                      raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")
                 self.static_data[var_name] = ds
@@ -352,7 +368,7 @@ class VGDDataset(Dataset):
         for var_name in sorted(self.stats['mean']['dynamic'].keys()):
             if self.dynamic_data[var_name] is None:
                 var_path = os.path.join(self.data_dir, "dynamic", f"{var_name}.nc")
-                ds = xr.open_dataset(var_path, engine="netcdf4", chunks='auto', drop_variables=["ssm_noise", "spatial_ref", "band", "crs"])
+                ds = xr.open_dataset(var_path, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"])
                 
                 if not ds.rio.crs:
                     ds = ds.rio.write_crs("EPSG:4326")
@@ -360,12 +376,25 @@ class VGDDataset(Dataset):
                 if var_name == 'seismic_magnitude':
                     nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
                     self.seismic_tree[var_name] = cKDTree(nc_points)
-                    # ds = ds.chunk({"time": 1000000, 'point': 1000000})
+                    ds = ds.chunk({'point': 10000, "time": -1})
                 else:
                     try:
                         lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
                         lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-                        # ds = ds.chunk({"time": 1000, lat_name: 1000, lon_name: 1000})
+                        ds = ds.rename({lat_name: 'latitude', lon_name: 'longitude'})
+                        # ds = ds.chunk({"time": 1000, 'latitude': 500, 'longitude': 500})
+
+                        lat_slice = slice(max_lat+0.5, min_lat-0.5) if ds.latitude[0] > ds.latitude[-1] else slice(min_lat-0.5, max_lat+0.5)
+                        lon_slice = slice(min_lon-0.5, max_lon+0.5) if ds.longitude[0] < ds.longitude[-1] else slice(max_lon+0.5, min_lon-0.5)
+                        ds = ds[var_name].sel(latitude=lat_slice, longitude=lon_slice)
+                        ds['longitude'] = ds['longitude'].astype("float32")
+                        ds['latitude'] = ds['latitude'].astype("float32")
+                        ds= ds.astype("float32").load()
+
+
+                        # ds['longitude'] = ds['longitude'].astype("float32")
+                        # ds['latitude'] = ds['latitude'].astype("float32")
+                        # ds[var_name] = ds[var_name].astype("float32")
                     except Exception:
                         raise ValueError(f"Could not find latitude/longitude coordinates in dataset {var_path}. Have only {list(ds.coords.keys())}")  
                 ds['time'] = pd.to_datetime(ds['time'].values)

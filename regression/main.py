@@ -5,6 +5,11 @@ Created on Mon Apr 15 09:25:04 2024
 @author: 39351
 """
 
+# https://docs.xarray.dev/en/stable/user-guide/dask.html
+
+
+
+from distributed import LocalCluster
 import yaml
 import torch
 from src.models.hybrid_model import VGDModel
@@ -21,6 +26,18 @@ from src.evaluation.visualization import plot_results
 import time
 from line_profiler import profile
 import line_profiler 
+
+from dask.distributed import Client
+
+
+import os
+import dask
+
+# Disable Dask's NVML (GPU) diagnostics to bypass the error
+dask.config.set({"distributed.diagnostics.nvml": False})
+
+# Alternatively, set it as an environment variable
+os.environ["DASK_DISTRIBUTED__DIAGNOSTICS__NVML"] = "False"
 
 
 
@@ -192,12 +209,20 @@ def main():
 
 
 if __name__ == "__main__":
+    
+    # close any existing clients
     # try:
-    #     mp.set_start_method('spawn')
-    # except RuntimeError:
+    #     client = Client.current()
+    #     client.close()
+    # except ValueError:
     #     pass
+    
+    # cluster = LocalCluster(n_workers=16, threads_per_worker=1, memory_limit='4GB')
+    # client = Client(cluster)
+    # print(f"Dask Dashboard available at: {client.dashboard_link}")
     main()
-    client.close()
+    
+    # client.close()
     
 
 

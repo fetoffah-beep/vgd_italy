@@ -80,8 +80,8 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
         target_mean = np.array(target_mean)
         target_std = np.array(target_std)
 
-        target_min = config["data"]['stats']["min"]["target"]
-        target_max = config["data"]['stats']["max"]["target"]
+        # target_min = config["data"]['stats']["min"]["target"]
+        # target_max = config["data"]['stats']["max"]["target"]
         
         for epoch in range(start_epoch, num_epochs):
             model.train()
@@ -92,9 +92,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
 
             for sample_idx, sample in enumerate(tqdm(train_loader, desc='Iterating over training data')):
                 
-                # if sample_idx > 1:
-                #     print('first iteration')
-                #     break
+                
                 dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
                 dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
                 optimizer.zero_grad()
@@ -153,96 +151,96 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                     # val_targets = (val_targets * (target_max - target_min)) + target_min
 
                     
-                    # Compute metrics
-                    val_mae = mean_absolute_error(val_targets, val_preds)
-                    val_rmse = val_rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
-                    val_r2 = r2_score(val_targets, val_preds)
-                    log_message(f"\n Model stats \n MAE: {val_mae:.4f}, RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}", log_f)
+            #         # Compute metrics
+            #         val_mae = mean_absolute_error(val_targets, val_preds)
+            #         val_rmse = val_rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
+            #         val_r2 = r2_score(val_targets, val_preds)
+            #         log_message(f"\n Model stats \n MAE: {val_mae:.4f}, RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}", log_f)
 
                     
-                    # Compute metrics for Mean baseline
-                    baseline_mae = mean_absolute_error(val_targets, np.full_like(val_targets, baseline_pred))
-                    baseline_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, baseline_pred)))
-                    baseline_r2 = r2_score(val_targets, np.full_like(val_targets, baseline_pred))
-                    log_message(f"\n Mean Baseline stats \n MAE: {baseline_mae:.4f}, RMSE: {baseline_rmse:.4f}, R²: {baseline_r2:.4f}", log_f)
+            #         # Compute metrics for Mean baseline
+            #         baseline_mae = mean_absolute_error(val_targets, np.full_like(val_targets, baseline_pred))
+            #         baseline_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, baseline_pred)))
+            #         baseline_r2 = r2_score(val_targets, np.full_like(val_targets, baseline_pred))
+            #         log_message(f"\n Mean Baseline stats \n MAE: {baseline_mae:.4f}, RMSE: {baseline_rmse:.4f}, R²: {baseline_r2:.4f}", log_f)
 
-                    # Compute metrics for a model that predicts a random number with 0 mean and std of 1
-                    rand_pred = np.random.standard_normal(size=val_targets.shape)
-                    rand_pred = (rand_pred * target_std) + target_mean      # Denormalise to the scale of the target
+            #         # Compute metrics for a model that predicts a random number with 0 mean and std of 1
+            #         rand_pred = np.random.standard_normal(size=val_targets.shape)
+            #         rand_pred = (rand_pred * target_std) + target_mean      # Denormalise to the scale of the target
 
-                    rand_mae = mean_absolute_error(val_targets, np.full_like(val_targets, rand_pred))
-                    rand_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, rand_pred)))
-                    rand_r2 = r2_score(val_targets, np.full_like(val_targets, rand_pred))
-                    log_message(f"\n Random baseline stats \n MAE: {rand_mae:.4f}, RMSE: {rand_rmse:.4f}, R²: {rand_r2:.4f}", log_f)
+            #         rand_mae = mean_absolute_error(val_targets, np.full_like(val_targets, rand_pred))
+            #         rand_rmse = np.sqrt(mean_squared_error(val_targets, np.full_like(val_targets, rand_pred)))
+            #         rand_r2 = r2_score(val_targets, np.full_like(val_targets, rand_pred))
+            #         log_message(f"\n Random baseline stats \n MAE: {rand_mae:.4f}, RMSE: {rand_rmse:.4f}, R²: {rand_r2:.4f}", log_f)
 
 
-                    run.log({# Training progress
-                                "interval_training_loss": interval_training_loss,
-                                "validation_loss": val_loss,
+            #         run.log({# Training progress
+            #                     "interval_training_loss": interval_training_loss,
+            #                     "validation_loss": val_loss,
 
-                                # Model metrics
-                                "model/MAE": val_mae,
-                                "model/RMSE": val_rmse,
-                                "model/R²": val_r2,
+            #                     # Model metrics
+            #                     "model/MAE": val_mae,
+            #                     "model/RMSE": val_rmse,
+            #                     "model/R²": val_r2,
 
-                                # Mean baseline metrics
-                                "baseline_mean/MAE": baseline_mae,
-                                "baseline_mean/RMSE": baseline_rmse,
-                                "baseline_mean/R²": baseline_r2,
+            #                     # Mean baseline metrics
+            #                     "baseline_mean/MAE": baseline_mae,
+            #                     "baseline_mean/RMSE": baseline_rmse,
+            #                     "baseline_mean/R²": baseline_r2,
 
-                                # Random baseline metrics
-                                "baseline_random/MAE": rand_mae,
-                                "baseline_random/RMSE": rand_rmse,
-                                "baseline_random/R²": rand_r2,
-                            },
-                                step=step,
-                        )                   
+            #                     # Random baseline metrics
+            #                     "baseline_random/MAE": rand_mae,
+            #                     "baseline_random/RMSE": rand_rmse,
+            #                     "baseline_random/R²": rand_r2,
+            #                 },
+            #                     step=step,
+            #             )                   
                     
 
     
-                    log_message(f"\n [Step {step}] Interval Training Loss: {interval_training_loss:.4f} | Validation Loss: {val_loss:.4f}", log_f)
-                    interval_loss_accum = 0.0
-                    interval_step_count = 0
+            #         log_message(f"\n [Step {step}] Interval Training Loss: {interval_training_loss:.4f} | Validation Loss: {val_loss:.4f}", log_f)
+            #         interval_loss_accum = 0.0
+            #         interval_step_count = 0
     
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
-                        patience_counter = 0
-                        if checkpoint_path:
-                            save_checkpoint(model, optimizer, epoch, f"{checkpoint_path}_interval_{timestamp}.pt")
-                    else:
-                        patience_counter += 1
-                        if patience_counter >= patience:
-                            log_message(f"\n Early stopping at step {step} (epoch {epoch + 1})", log_f)
-                            plot_losses(interval_training_loss, interval_val_loss)
-                            return
+            #         if val_loss < best_val_loss:
+            #             best_val_loss = val_loss
+            #             patience_counter = 0
+            #             if checkpoint_path:
+            #                 save_checkpoint(model, optimizer, epoch, interval_training_loss, val_loss, f"{checkpoint_path}_interval_{timestamp}.pt")
+            #         else:
+            #             patience_counter += 1
+            #             if patience_counter >= patience:
+            #                 log_message(f"\n Early stopping at step {step} (epoch {epoch + 1})", log_f)
+            #                 plot_losses(interval_training_loss, interval_val_loss)
+            #                 return
                         
                 
                
     
     
-            # End of epoch: average training loss
-            model.eval()
-            val_loss = 0.0
-            val_preds = []
-            val_targ = []
-            with torch.no_grad():
-                for val_sample in tqdm(val_loader, desc='Epoch validation'):
-                    val_dyn, val_static, val_targets = val_sample['dynamic'], val_sample['static'], val_sample['target']
-                    val_dyn, val_static, val_targets = val_dyn.to(device), val_static.to(device), val_targets.to(device)
+            # # End of epoch: average training loss
+            # model.eval()
+            # val_loss = 0.0
+            # val_preds = []
+            # val_targ = []
+            # with torch.no_grad():
+            #     for val_sample in tqdm(val_loader, desc='Epoch validation'):
+            #         val_dyn, val_static, val_targets = val_sample['dynamic'], val_sample['static'], val_sample['target']
+            #         val_dyn, val_static, val_targets = val_dyn.to(device), val_static.to(device), val_targets.to(device)
         
-                    val_outputs = model(val_dyn, val_static)
-                    val_targets = val_targets.unsqueeze(-1)
-                    vloss = loss_fun(val_outputs, val_targets)
-                    val_loss += vloss.item()
+            #         val_outputs = model(val_dyn, val_static)
+            #         val_targets = val_targets.unsqueeze(-1)
+            #         vloss = loss_fun(val_outputs, val_targets)
+            #         val_loss += vloss.item()
                     
-                    val_preds.append(val_outputs.cpu().numpy())
-                    val_targ.append(val_targets.cpu().numpy())
+            #         val_preds.append(val_outputs.cpu().numpy())
+            #         val_targ.append(val_targets.cpu().numpy())
                     
 
             
-            # End of epoch: average training loss
-            training_loss /= len(train_loader)
-            val_loss /= len(val_loader)
+            # # End of epoch: average training loss
+            # training_loss /= len(train_loader)
+            # val_loss /= len(val_loader)
             
     
             # training_losses.append(training_loss)
@@ -306,35 +304,34 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
             #     )    
             
 
-            log_message(f"\n Epoch {epoch + 1} | Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}", log_f)
+            # log_message(f"\n Epoch {epoch + 1} | Training Loss: {training_loss:.4f}, Validation Loss: {val_loss:.4f}", log_f)
             
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
-                if checkpoint_path:
-                    save_checkpoint(model, optimizer, epoch, f"{checkpoint_path}_epoch_{timestamp}.pt")
-            else:
-                patience_counter += 1
-                if patience_counter >= patience:
-                    log_message(f"\n Early stopping at epoch {epoch + 1}", log_f)
-                    plot_losses(training_losses, validation_losses)
-                    return
+            # if val_loss < best_val_loss:
+            #     best_val_loss = val_loss
+            #     patience_counter = 0
+            #     if checkpoint_path:
+            #         save_checkpoint(model, optimizer, epoch, training_loss, val_loss, f"{checkpoint_path}_epoch_{timestamp}.pt")
+            # else:
+            #     patience_counter += 1
+            #     if patience_counter >= patience:
+            #         log_message(f"\n Early stopping at epoch {epoch + 1}", log_f)
+            #         plot_losses(training_losses, validation_losses)
+            #         return
     
             # scheduler.step()
-    
 
     plot_losses(training_losses, validation_losses)
     
     # print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
 
-
-
-def save_checkpoint(model, optimizer, epoch, checkpoint_path):
+def save_checkpoint(model, optimizer, epoch, training_loss, val_loss, checkpoint_path):
     """Function to save model and optimizer state as a checkpoint."""
     checkpoint = {
         'epoch': epoch + 1,  # Save as the next epoch for resuming
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        # 'training_loss': training_loss,
+        # 'val_loss': val_loss
     }
     torch.save(checkpoint, checkpoint_path)
     # if wandb.run:

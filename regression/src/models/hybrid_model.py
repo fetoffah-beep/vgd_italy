@@ -60,11 +60,17 @@ class VGDModel(nn.Module):
         self.kernel_size = (3,3)
         self.num_layers= 1 #3
         
-        self.num_static_features = 44 #static_feat
+        self.num_static_features = 25 #static_feat
         self.num_dyn_features = dyn_feat
-        
-        self.lulc_embeddings = nn.Embedding(11, 1)
-        self.lithology_embeddings = nn.Embedding(19, 1)
+
+
+
+        # If we’re in a hurry, one rule of thumb is to use the fourth root of the total number of unique 
+        # categorical elements while another is that the embedding dimension should be approximately 1.6 
+        # times the square root of the number of unique elements in the category, and no less than 600.
+        # If we are doing hyperparameter tuning, it might be worth searching within this range.
+        self.lulc_embeddings = nn.Embedding(11, 4)
+        self.lithology_embeddings = nn.Embedding(19, 5)
         
         
         
@@ -140,14 +146,10 @@ class VGDModel(nn.Module):
 
         
         ################# CNN for static features #################
-        lithology_embedding = self.lithology_embeddings(static_input[:, 5, :, :].long()).squeeze(0).permute(2, 0, 1)
-        lulc_embeddings = self.lulc_embeddings(static_input[:, 6, :, :].long()).squeeze(0).permute(2, 0, 1)
-        
-        # lith_emb = lithology_embedding.permute(0, 3, 1, 2)
-        # lulc_emb = lulc_embeddings.permute(0, 3, 1, 2) 
-        
-        static_input[:, 5, :, :] = lithology_embedding
-        static_input[:, 6, :, :] = lulc_embeddings
+        lithology_embedding = self.lithology_embeddings(static_input[:, 5, :, :].long()).permute(0,3,1,2)
+        lulc_embedding = self.lulc_embeddings(static_input[:, 6, :, :].long()).permute(0,3,1,2)
+
+        static_input = torch.cat([static_input, lithology_embedding, lulc_embedding], dim=1)
 
         
         
