@@ -123,7 +123,7 @@ class ConvLSTM(nn.Module):
         self.return_all_layers = return_all_layers
         
         self.dropout_rate = dropout
-        self.dropout = nn.Dropout2d(self.dropout_rate) if self.dropout_rate > 0 else nn.Identity()
+        self.dropout = nn.Dropout(self.dropout_rate) if self.dropout_rate > 0 else nn.Identity()
 
 
 

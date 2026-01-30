@@ -8,9 +8,10 @@ import numpy as np
 import shap
 import matplotlib.pyplot as plt
 import datetime
+from line_profiler import profile
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-
+@profile
 def shap_plot(ds):
     
     feature_names = list(ds.data_vars.keys())

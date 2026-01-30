@@ -6,12 +6,12 @@ import datetime
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from tqdm import tqdm
 import yaml
-
+from line_profiler import profile
 from src.utils.logger import log_message
 
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-
+@profile
 def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True):
     """
     Evaluates the trained model on the test dataset and computes summary stats.
@@ -33,20 +33,23 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
     with open(config_path) as config_file:
             config = yaml.safe_load(config_file)
     
-    target_mean     = config["data"]['stats']["mean"]["target"]
-    target_std      = config["data"]['stats']["std"]["target"]
+    target_mean     = config["data"]['stats']["displacement"]["mean"]
+    target_std      = config["data"]['stats']["displacement"]["std"]
     target_mean     = np.array(target_mean)
     target_std      = np.array(target_std)
     
     
     with torch.no_grad():  # Disable gradient computation
-        for sample in tqdm(test_loader):
-            dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
-            dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
-                               
-            outputs = model(dyn_inputs, static_input)
+        for sample_idx, sample in enumerate(tqdm(test_loader, desc='Iterating over test data')): 
+            
+            if sample_idx>1:
+                break
+                
+            dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
+            dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
+            outputs = model(dynamic_cont, static_cont, dynamic_cat, static_cat)
             targets = targets.unsqueeze(-1)
-
+            
             predictions.append(outputs.cpu().numpy())
             ground_truth.append(targets.cpu().numpy())
 

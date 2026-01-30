@@ -20,11 +20,11 @@ Source:
 import torch
 import torch.nn as nn
 from .convlstm import ConvLSTM
-import torch.nn.functional as F
-
+from line_profiler import profile
 
 class VGDModel(nn.Module):
-    def __init__(self, dyn_feat, static_feat, hidden_size, output_size):
+    @profile
+    def __init__(self, dyn_feat, static_feat, cat_info, hidden_size, output_size):
         """
         CNN-ConvLSTM model for Vertical Ground Displacement (VGD) prediction.
         
@@ -55,26 +55,37 @@ class VGDModel(nn.Module):
         """
         super(VGDModel, self).__init__()
         
-        self.output_size = 1
-        self.hidden_dim = [16] #[128,64,32] #[128, 64, 64]
+        self.output_size = output_size
+        self.hidden_dim = hidden_size
         self.kernel_size = (3,3)
-        self.num_layers= 1 #3
+        self.num_layers= len(hidden_size)
         
-        self.num_static_features = 25 #static_feat
         self.num_dyn_features = dyn_feat
 
-
-
+        cat_info = cat_info
+        
         # If we’re in a hurry, one rule of thumb is to use the fourth root of the total number of unique 
         # categorical elements while another is that the embedding dimension should be approximately 1.6 
         # times the square root of the number of unique elements in the category, and no less than 600.
         # If we are doing hyperparameter tuning, it might be worth searching within this range.
-        self.lulc_embeddings = nn.Embedding(11, 4)
-        self.lithology_embeddings = nn.Embedding(19, 5)
-        
-        
-        
-        
+        self.embeddings = torch.nn.ModuleDict({
+            var_name: torch.nn.Embedding(num_embeddings=len(classes), embedding_dim=max(2, int(1.6 * (len(classes)**0.5))))
+            for var_name, classes in cat_info.items()
+        })
+
+        # static_feat and dyn_feat contains the number of continuous and categorical variables.
+        # To rightly set the number of features for the CNN and ConvLSTM, we have to reduce by the num of categorical features and 
+        # add the total embedding dimensions for all features in static or dynamic group
+        # i.e. self.num_static_features = static_feat - num_categorical_static_features + sum_of_embeddings for all_static_features
+        static_cat = [name for name in cat_info.keys() if name != 'month']
+        dynamic_cat = ['month']
+
+        sum_emb_static = sum([self.embeddings[name].embedding_dim for name in static_cat])
+        self.num_static_features = static_feat - len(static_cat) + sum_emb_static
+
+        sum_emb_dyn = sum([self.embeddings[name].embedding_dim for name in dynamic_cat])
+        self.num_dyn_features = dyn_feat - len(dynamic_cat) + sum_emb_dyn
+
         self.static_model = nn.Sequential(
             nn.Conv2d(in_channels=self.num_static_features, out_channels=16, kernel_size=3, padding=2),
             nn.BatchNorm2d(16),
@@ -88,9 +99,6 @@ class VGDModel(nn.Module):
             nn.Dropout(0.2),
             nn.MaxPool2d(kernel_size=2, stride=1)
         )
-        
-        
-        
 
         self.dynamic_model = ConvLSTM(self.num_dyn_features, 
                                       self.hidden_dim, 
@@ -100,15 +108,26 @@ class VGDModel(nn.Module):
                                       batch_first=True
                             )
         
-        self.fc_static= nn.Sequential(
-                                nn.LazyLinear(256), #nn.Linear(64*5*5*25, 256),
-                                nn.ReLU()
-                            )
+        # self.fc_static= nn.Sequential(
+        #                         nn.LazyLinear(256), #nn.Linear(64*5*5*25, 256),
+        #                         nn.ReLU()
+        #                     )
+        
+        # self.fc_dynamic = nn.Sequential(
+        #                         nn.LazyLinear(256), # nn.Linear(256*5*5*25, 256),
+        #                         nn.ReLU()
+        #                     )
+        
+        self.fc_static = nn.Sequential(
+                nn.Linear(32 * 5 * 5, 256),
+                nn.ReLU()
+            )
         
         self.fc_dynamic = nn.Sequential(
-                                nn.LazyLinear(256), # nn.Linear(256*5*5*25, 256),
-                                nn.ReLU()
-                            )
+                nn.Linear(self.hidden_dim[-1] * 5 * 5 , 256),
+                nn.ReLU()
+            )
+
         
         self.fc_fused = nn.Sequential(
                                 nn.Linear(256*2, 128),
@@ -118,10 +137,8 @@ class VGDModel(nn.Module):
                             )
         
 
-        
-        
-
-    def forward(self, dynamic_input, static_input):
+    @profile  
+    def forward(self, continous_dynamic_input, continous_static_input, categorical_dynamic_input, categorical_static_input):
         """
             Forward pass for the CNN-ConvLSTM model.
             
@@ -135,54 +152,55 @@ class VGDModel(nn.Module):
             
             
         """
-        batch_size, time_frame, _, h, w = dynamic_input.size()
-        
-        
-        # ################# ConvLSTM for Dynamic features #################
-        dynamic_out_layers, _ = self.dynamic_model(dynamic_input)
-        dynamic_out = dynamic_out_layers[-1]
+        batch_size, time_frame, _, _, _ = continous_dynamic_input.size()
+        # Continuous dynamic
+        continous_dynamic_input = continous_dynamic_input.permute(0, 2, 1, 3, 4)
 
         
 
-        
         ################# CNN for static features #################
-        lithology_embedding = self.lithology_embeddings(static_input[:, 5, :, :].long()).permute(0,3,1,2)
-        lulc_embedding = self.lulc_embeddings(static_input[:, 6, :, :].long()).permute(0,3,1,2)
+        static_embedded = [continous_static_input]
+        cat_static_idx = 0
+        for i, (varname, embedding) in enumerate(self.embeddings.items()):
+            if varname != 'month':
+                indices = categorical_static_input[:, cat_static_idx].long()
+                embedded = embedding(indices).squeeze(1).permute(0, 3, 1, 2)
+                static_embedded.append(embedded)
+                cat_static_idx += 1
+        input_static = torch.cat(static_embedded, dim=1)
+        cnn_output = self.static_model(input_static)
+        # static2dyn = cnn_output.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
 
-        static_input = torch.cat([static_input, lithology_embedding, lulc_embedding], dim=1)
 
-        
-        
-        x_cnn = static_input[:, :, :, :]
-        
-        
-        
-        
-        
-        x_cnn = self.static_model(x_cnn)
-        
-        static_out = x_cnn.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
-        
-        
+        # ################# ConvLSTM for Dynamic features #################
+        dynamic_embedded = [continous_dynamic_input]
+        month_indices = categorical_dynamic_input[:, 0].long()
+        dyn_embedded = self.embeddings['month'](month_indices).permute(0, 1, 4, 2, 3)
+        dynamic_embedded.append(dyn_embedded)
+        # raw_cat_channel = categorical_dynamic_input.permute(0, 2, 1, 3, 4) 
+        # dynamic_embedded.append(raw_cat_channel)
+        input_dynamic = torch.cat(dynamic_embedded, dim=2)
+        dynamic_out_layers, _ = self.dynamic_model(input_dynamic)
+        convlstm_output = dynamic_out_layers[-1]
+
         
         # ################# FULLY CONNECETED LAYERS ################# 
-        dynamic_out = dynamic_out.view(dynamic_out.shape[0], -1)  
-        static_out = static_out.view(static_out.shape[0], -1)
+        # dynamic_out = convlstm_output.view(convlstm_output.shape[0], -1)  
+        # static_out = static2dyn.view(static2dyn.shape[0], -1)
+        static_flat = cnn_output.reshape(batch_size, -1)
+        dynamic_last = convlstm_output[:, -1, :, :, :]
+        dynamic_flat = dynamic_last.reshape(batch_size, -1)
 
+        dynamic_out = self.fc_dynamic(dynamic_flat)
+        static_out = self.fc_static(static_flat)
 
-
-        dynamic_out = self.fc_dynamic(dynamic_out)
-        static_out = self.fc_static(static_out)
-        
 
         # ################# HYBRID MODEL #################           
         # # Non-empty tensors provided for concatenation must have the same shape, except in the cat dimension.
         # # Ensure the spatial dimensions match before concatenation
-
         fused_features = torch.cat([dynamic_out, static_out], dim=1)
-        
         # Further fusion with a convolutional layer
-        output = self.fc_fused(fused_features)
-    
+        output = self.fc_fused(fused_features) 
+
         return output
     

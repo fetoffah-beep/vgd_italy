@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
-import numpy as np
-import torch
-
+from line_profiler import profile
 import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+@profile
 def plot_results(ground_truth, predictions, residuals):
     """
     Plots ground truth vs predictions and residuals.

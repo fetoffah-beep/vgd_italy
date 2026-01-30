@@ -1,8 +1,9 @@
 # -- coding: utf-8 --
 
 import torch
+from line_profiler import profile
 
-
+@profile
 def get_summary_stats(data):
     """
     Computes summary statistics for a tensor or array.
@@ -43,7 +44,7 @@ def get_summary_stats(data):
     }
     return stats
 
-
+@profile
 def display_summary_stats(stats, label="Data"):
     """
     Displays the summary statistics in a readable format.

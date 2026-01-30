@@ -43,7 +43,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     
     sample_batch = next(iter(data_loader))
-    explainer_data = [sample_batch['dynamic'].to(device), sample_batch['static'].to(device)]
+    explainer_data = [sample_batch['dynamic_cont'].to(device), sample_batch['static_cont'].to(device), sample_batch['dynamic_cat'].to(device), sample_batch['static_cat'].to(device)]
     
 
 
@@ -63,14 +63,14 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     shap_data = []
     for sample_idx, sample in enumerate(tqdm(data_loader)):
-        if sample_idx > 100:
+        if sample_idx > 1:
             break
-        
-        dyn_inputs, static_input, targets = sample['dynamic'], sample['static'], sample['target']
-        dyn_inputs, static_input, targets = dyn_inputs.to(device), static_input.to(device), targets.to(device)
+
+        dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
+        dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
         eastings, northings = sample['coords']
 
-        shap_values = explainer.shap_values([dyn_inputs, static_input], check_additivity=False)
+        shap_values = explainer.shap_values([dynamic_cont, static_cont, dynamic_cat.float().requires_grad_(True), static_cat.float().requires_grad_(True)], check_additivity=False)
 
         
         dyn_shap_values = shap_values[0]
@@ -84,8 +84,10 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
             dyn_means = np.mean(dyn_sample_shap, axis=(0, 2, 3, 4))  # Average over time, height, width
             stat_means = np.mean(stat_sample_shap, axis=(1, 2, 3))  # Average over height, width
 
-            dynamic_feature_dict = {pred_vars[i]: dyn_means[i].item() for i in range(len(pred_vars))}
-            static_feature_dict = {static_vars[i]: stat_means[i].item() for i in range(len(static_vars))}
+            dynamic_feature_dict = dict(zip(pred_vars, dyn_means))
+            static_feature_dict = dict(zip(pred_vars, stat_means))
+            # dynamic_feature_dict = {pred_vars[i]: dyn_means[i].item() for i in range(len(pred_vars))}
+            # static_feature_dict = {static_vars[i]: stat_means[i].item() for i in range(len(static_vars))}
 
             feature_dict = {**dynamic_feature_dict, **static_feature_dict}
 

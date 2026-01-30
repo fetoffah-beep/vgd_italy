@@ -6,9 +6,10 @@ Created on Mon Jan 13 09:49:46 2025
 """
 import torch
 from torch.utils.data import DataLoader
-import time
+from line_profiler import profile
 
 class VGDDataLoader:
+    @profile
     def __init__(self,  dataset, batch_size, num_workers=0, shuffle=False):
         """
         A class to handle DataLoader creation for both static and dynamic features.
@@ -30,11 +31,11 @@ class VGDDataLoader:
 
         self.data_loader = self._create_dataloaders()
         
-
+    @profile
     def _create_dataloaders(self):
         pin_memory = torch.cuda.is_available()
         persistent_workers = self.num_workers > 0
-        # prefetch_factor = 1
+        prefetch_factor = 2
 
 
 
@@ -43,7 +44,7 @@ class VGDDataLoader:
         
         return data_loader
 
-
+    @profile
     @property
     def dataloader(self):
         return self.data_loader

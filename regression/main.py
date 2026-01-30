@@ -1,17 +1,11 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Apr 15 09:25:04 2024
-
-@author: 39351
-"""
-
 # https://docs.xarray.dev/en/stable/user-guide/dask.html
-
-
-
-from distributed import LocalCluster
+import os
 import yaml
 import torch
+import dask
+import distributed
+from dask.distributed import Client
+from distributed import LocalCluster
 from src.models.hybrid_model import VGDModel
 from src.data.dataloader import VGDDataLoader
 from src.data.hybrid_dataset import VGDDataset
@@ -24,98 +18,42 @@ from src.evaluation.shap_plot import shap_plot
 from src.evaluation.summary_stats import get_summary_stats, display_summary_stats
 from src.evaluation.visualization import plot_results
 import time
-from line_profiler import profile
 import line_profiler 
+from line_profiler import profile
 
-from dask.distributed import Client
-
-
-import os
-import dask
-
-# Disable Dask's NVML (GPU) diagnostics to bypass the error
-dask.config.set({"distributed.diagnostics.nvml": False})
-
-# Alternatively, set it as an environment variable
-os.environ["DASK_DISTRIBUTED__DIAGNOSTICS__NVML"] = "False"
+# from codecarbon import EmissionsTracker
 
 
-
-start_time = time.time()
-
-
-print('libraries import done')
-profile = line_profiler.LineProfiler()
 
 @profile
-def main():    
-    
-    with open("config.yaml") as config_file:
-        config = yaml.safe_load(config_file)
-        
-   
-    
+def main(config, split_pattern, model_type):  
+
     # Configuration
     checkpoint_path     = config["checkpoint"]["save_path"]
     hidden_size         = config["model"]["hidden_layers"]
     num_epochs          = config["training"]["epochs"]
     learning_rate       = config["optimizer"]["init_args"]["lr"]
-    model_optimizer     = None #config["optimizer"]["class_path"]
+    # model_optimizer     = None #config["optimizer"]["class_path"]
     batch_size          = config["training"]["batch_size"]
     num_workers         = config["training"]["num_workers"]
     device              = config["model"]["device"]
-    seq_len             = config["training"]["seq_len"]
     output_size         = config["model"]["output_size"]
 
-    num_dynamic_features = len(config["data"]['stats']['mean']['dynamic'].keys())
-    num_static_features  = len(config["data"]['stats']['mean']['static'].keys())
+    # predictors = config["data"]['stats']
 
-    # continue_from_checkpoint = False
-
-    print('starting dataset initialisation')
+    print('Starting dataset initialisation')
 
     # preload data
-    train_dataset = VGDDataset('training',      "../emilia_aoi/train_metadata.csv", 'config.yaml', "../data", seq_len, time_split=False)
-    train_dataset.pre_load_data()
-
-    # Initialize the dataset for train, val, and test splits
-    # train_dataset = VGDDataset('training',      "../emilia_aoi/train_metadata.csv", 'config.yaml', "../data", seq_len, time_split=False)
-    val_dataset   = VGDDataset('validation',    "../emilia_aoi/val_metadata.csv",   'config.yaml', "../data", seq_len, time_split=False)
-    test_dataset  = VGDDataset('test',          "../emilia_aoi/test_metadata.csv",  'config.yaml', "../data", seq_len, time_split=False)
-
-
-    # base_dataset = VGDDataset(config_path="config.yaml", data_dir="data").pre_load_data()
-
-    # train_dataset = VGDDataset(split="train", ...)
-    # train_dataset.dynamic_data = train_dataset.dynamic_data
-    # train_dataset.seismic_tree = train_dataset.seismic_tree
-    # train_dataset.static_data = train_dataset.static_data
-
-    # val_dataset = VGDDataset(split="val", ...)
-    val_dataset.dynamic_data = train_dataset.dynamic_data
-    val_dataset.seismic_tree = train_dataset.seismic_tree
-    val_dataset.static_data = train_dataset.static_data
-
-    # test_dataset = VGDDataset(split="test", ...)
-    test_dataset.dynamic_data = train_dataset.dynamic_data
-    test_dataset.seismic_tree = train_dataset.seismic_tree
-    test_dataset.static_data = train_dataset.static_data
-
-
-
-
+    train_dataset = VGDDataset('training', model_type, config, "./original_data", split_pattern='spatial')
+    val_dataset = VGDDataset('validation', model_type, config, "./original_data", split_pattern='spatial')
+    test_dataset = VGDDataset('test', model_type, config, "./original_data", split_pattern='spatial')
     
-    # # # Example: print the first sample
-    # sample = test_dataset[0]
+    num_dynamic_features = train_dataset.num_dynamic_features
 
-    # print("Static shape:", sample["static"].shape)
-    # print("Dynamic shape:", sample["dynamic"].shape)
-    # print("Target shape:", sample["target"].shape)
-    # print("Coords:", sample["coords"])
+    num_static_features  = train_dataset.num_static_features
 
-
+    print(f"Number of static features: {num_static_features} \nNumber of dynamic features: {num_dynamic_features}")
     
-
     # Create DataLoaders for batching and shuffling
     train_loader = VGDDataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True)
     val_loader   = VGDDataLoader(val_dataset,   batch_size=batch_size, num_workers=num_workers, shuffle=False)
@@ -124,12 +62,11 @@ def main():
     # Get the data loaders for train, validation, and test sets
     train_loader, val_loader, test_loader = (dl.data_loader for dl in (train_loader, val_loader, test_loader))
     
-
-
     print(f"Train samples: {len(train_dataset)}, Validation samples: {len(val_dataset)}, Test samples: {len(test_dataset)} \n")
 
+
     # Initialize the model
-    model = VGDModel(num_dynamic_features, num_static_features, hidden_size, output_size)
+    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.var_categories, hidden_size, output_size)
 
     model_optimizer = torch.optim.Adam(
                         model.parameters(),
@@ -144,10 +81,10 @@ def main():
      
         
     print(model)
-    # print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
-    # print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    # print('Optimizer: ', optimizer)
-    # print('Start epoch: ', start_epoch)
+    print(f"Total parameters: {sum(p.numel() for p in model.parameters())}")
+    print(f"Trainable parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print('Optimizer: ', optimizer)
+    print('Start epoch: ', start_epoch)
     
     
     # Train the model
@@ -157,7 +94,7 @@ def main():
         val_loader,
         optimizer,
         learning_rate,
-        'config.yaml',
+        config,
         start_epoch=start_epoch,
         num_epochs=num_epochs,
         checkpoint_path=checkpoint_path,
@@ -167,48 +104,63 @@ def main():
     # Test/Evaluate the model
     print("Training complete. Evaluating the model on the test set.")
     
-    # results = evaluate_model(model, test_loader, 'config.yaml', device=device)
-    # predictions, ground_truth, residuals = (
-    #     results["predictions"],
-    #     results["ground_truth"],
-    #     results["residuals"],
-    # )
+    results = evaluate_model(model, test_loader, 'config.yaml', device=device)
+    predictions, ground_truth, residuals = (
+        results["predictions"],
+        results["ground_truth"],
+        results["residuals"],
+    )
 
-    # # Compute and display statistics
-    # pred_stats = get_summary_stats(predictions)
-    # gt_stats = get_summary_stats(ground_truth)
-    # res_stats = get_summary_stats(residuals)
+    # Compute and display statistics
+    pred_stats = get_summary_stats(predictions)
+    gt_stats = get_summary_stats(ground_truth)
+    res_stats = get_summary_stats(residuals)
 
-    # print("\n=== Model Evaluation Summary ===")
-    # display_summary_stats(pred_stats, label="Predictions")
-    # display_summary_stats(gt_stats, label="Ground Truth")
-    # display_summary_stats(res_stats, label="Residuals")
+    print("\n=== Model Evaluation Summary ===")
+    display_summary_stats(pred_stats, label="Predictions")
+    display_summary_stats(gt_stats, label="Ground Truth")
+    display_summary_stats(res_stats, label="Residuals")
 
-    # # Visualize results
-    # plot_results(ground_truth, predictions, residuals)
+    # Visualize results
+    plot_results(ground_truth, predictions, residuals)
 
-    # # # Perform SHAP analysis for train, validation, and test sets
-    # dyn_features = ['precipitation', 'drought_code', 'temperature']
-    # static_features = ["bulk_density", "clay_content", "dem", "land_cover", "population_density_2020_1km", "sand", "silt", "slope", "soil_organic_carbon", "topo_wetness_index", "vol water content at -10 kPa", "vol water content at -1500 kPa", "vol water content at -33 kPa"]
-
+    # Perform SHAP analysis for train, validation, and test sets
+    dyn_features = train_dataset.dynamic_data.keys()
+    static_features = train_dataset.static_data.keys()
     # train_shap = compute_shap(model, train_loader, device, dyn_features, static_features, "Train")
     # shap_plot(train_shap)
 
-    # # # # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
-    # # # # shap_plot(val_shap)
+    # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
+    # shap_plot(val_shap)
 
-    # test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
-    # shap_plot(test_shap)
+    test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
+    shap_plot(test_shap)
 
     # Perform LIME analysis for train, validation, and test sets
     # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
     # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
     # compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
 
-    print("Time taken:", time.time() - start_time)
+    
 
 
 if __name__ == "__main__":
+    with open("config.yaml") as config_file:
+        config = yaml.safe_load(config_file)
+
+
+    split_patterns = ['spatial','temporal', 'spatio_temporal', 'spatial_train_val']
+    model_types = ['Explanatory', 'Time_series', 'Mixed']
+        
+
+    # Disable Dask's GPU monitoring to prevent the NVMLError crash
+    # dask.config.set({"distributed.diagnostics.nvml": False})
+
+    profile = line_profiler.LineProfiler()
+    # tracker = EmissionsTracker(project_name="vgd_training")
+    # tracker.start()
+    
+    scratch_dir = "./dask_scratch" 
     
     # close any existing clients
     # try:
@@ -217,12 +169,33 @@ if __name__ == "__main__":
     # except ValueError:
     #     pass
     
-    # cluster = LocalCluster(n_workers=16, threads_per_worker=1, memory_limit='4GB')
+    # cluster = LocalCluster(n_workers=8, threads_per_worker=1, memory_limit='8GB', local_directory=scratch_dir, scheduler_port=8786, dashboard_address=':8787', silence_logs=50)
+
     # client = Client(cluster)
-    # print(f"Dask Dashboard available at: {client.dashboard_link}")
-    main()
+    # print(f"Dask Dashboard available at: {client.dashboard_link} \n")
+    
+    for model_type in model_types:
+        for split_pattern in split_patterns:
+            start_time = time.time()
+            print(f"{model_type} Model experiment training start time: {time.ctime(start_time)} \n")
+    
+            main(config, split_pattern, model_type)
+            break
+        break
+    
+    
+            # print(f"{model_type} Model run end time: {time.ctime()} \n")
+            # print(f"Time taken to run {model_type} model for {split_pattern}: ", time.time() - start_time)
+    # training code
+    
+    # emissions = tracker.stop()
+    # print(emissions)
+
+    # cluster.close()
     
     # client.close()
+
+    exit()
     
 
 

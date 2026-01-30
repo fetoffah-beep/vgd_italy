@@ -3,9 +3,9 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 1
-  batch_size: 512
+  batch_size: 32
   num_workers: 0
-  seq_len: 122
+  seq_len: 40
 model:
   name: CNN-ConvLSTM
   input_size: null
@@ -51,108 +51,106 @@ data:
     - 95
     - 100
   stats:
-    mean:
-      static:
-        bulk_density: 99.7342758178711
-        clay_content: 289.3764953613281
-        dem: 163.35195922851562
-        genua: 0.005820461083203554
-        ksat: 47.61066436767578
-        lithology: None
-        lulc: None
-        # land_cover: 50
-        population_density_2020_1km: 782.9249267578125
-        sand: 130.4551544189453
-        silt: 367.8340759277344
-        slope: 3.6620254516601562
-        soil_organic_carbon: 428.3838806152344
-        topo_wetness_index: 4.240095138549805
-        vol water content at -10: 315.5993957519531
-        vol water content at -1500 kPa: 165.74119567871094
-        vol water content at -33 kPa: 272.0248107910156
-      dynamic:
-        drought_code: 20.796695709228516
-        precipitation: 0.8245198130607605
-        seismic_magnitude: 5.981808135402389e-05
-        ssm: 8.681095123291016
-        temperature: 0.657178521156311
-        # twsan: -1.9043378829956055
-      target: -5.6704888343811035
-    std:
-      static:
-        bulk_density: 47.62698745727539
-        clay_content: 142.64483642578125
-        dem: 262.3697509765625
-        genua: 0.0010724844178184867
-        ksat: 9.602312088012695
-        # land_cover: 15.342401
-        population_density_2020_1km: 1521.71044921875
-        sand: 86.97979736328125
-        silt: 176.58908081054688
-        slope: 5.287639141082764
-        soil_organic_carbon: 246.3234405517578
-        topo_wetness_index: 1.2608166933059692
-        vol water content at -10: 150.04393005371094
-        vol water content at -1500 kPa: 79.476318359375
-        vol water content at -33 kPa: 129.19691467285156
-      dynamic:
-        drought_code: 103.2440185546875
-        precipitation: 4.558355331420898
-        seismic_magnitude: 0.0032310467213392258
-        ssm: 33.33436965942383
-        temperature: 4.559828281402588
-        # twsan: 1.119337558746338
-      target: 9.522238731384277
-    min:
-      static:
-        bulk_density: 0.0
-        clay_content: 0.0
-        dem: -10.04233615921024
-        genua: 0.004019205405045377
-        ksat: 31.105897678366386
-        # land_cover: 10
-        population_density_2020_1km: 0.0
-        sand: 0.0
-        silt: 0.0
-        slope: 0.0
-        soil_organic_carbon: 0.0
-        topo_wetness_index: 0.51333863398212
-        vol water content at -10: 0.0
-        vol water content at -1500 kPa: 0.0
-        vol water content at -33 kPa: 0.0
-      dynamic:
-        drought_code: 0.0
-        precipitation: 0.0
-        seismic_magnitude: 0.0
-        ssm: 0.0
-        temperature: -22.514129638671875
-        # twsan: -5.5725226402282715
-      target: -246.5
-    max:
-      static:
-        bulk_density: 141.45956117566982
-        clay_content: 557.8878713993064
-        dem: 2159.288511715335
-        genua: 0.01183513781892867
-        ksat: 107.80093022389784
-        # land_cover: 110
-        population_density_2020_1km: 18228.511354503684
-        sand: 548.6847115175156
-        silt: 613.3401915143922
-        slope: 48.51261520385742
-        soil_organic_carbon: 1566.9674823620835
-        topo_wetness_index: 7.600902557373049
-        vol water content at -10: 466.10009898935886
-        vol water content at -1500 kPa: 289.2248439285827
-        vol water content at -33 kPa: 400.42075596362645
-      dynamic:
-        drought_code: 778.4448852539062
-        precipitation: 121.0
-        seismic_magnitude: 2.0
-        ssm: 126.5
-        temperature: 35.40116500854492
-        # twsan: 0.31184667348861694
-      target: 70.30000305175781
+    displacement:
+      mean: -5.6704888343811035
+      std: 9.522238731384277
+      min: -246.5
+      max: 70.30000305175781
+    bulk_density:
+      mean: 115.83834838867188
+      std: 33.824249267578125
+      min: 0.0
+      max: 142.0
+    clay_content:
+      mean: 338.34307861328125
+      std: 106.24502563476562
+      min: 0.0
+      max: 558.0
+    dem:
+      mean: 220.09971618652344
+      std: 301.62799072265625
+      min: -8.820664405822754
+      max: 2159.388916015625
+    genua:
+      mean: 0.005956022534519434
+      std: 0.0011931683402508497
+      min: 0.004016949329525232
+      max: 0.011880000121891499
+    ksat:
+      mean: 46.918724060058594
+      std: 10.455387115478516
+      min: 30.82217788696289
+      max: 107.03894805908203
+    population_density_2020_1km:
+      mean: 308.11492919921875
+      std: 993.8604736328125
+      min: 0.0
+      max: 18901.658203125
+    sand:
+      mean: 159.70858764648438
+      std: 82.56853485107422
+      min: 0.0
+      max: 581.0
+    silt:
+      mean: 431.03533935546875
+      std: 125.43034362792969
+      min: 0.0
+      max: 642.0
+    slope:
+      mean: 5.47356653213501
+      std: 6.913877964019775
+      min: 0.0
+      max: 54.03114318847656
+    soil_organic_carbon:
+      mean: 528.0527954101562
+      std: 226.95228576660156
+      min: 0.0
+      max: 1721.0
+    vol_water_content_at_-10_kPa:
+      mean: 372.9745788574219
+      std: 104.76956939697266
+      min: 0.0
+      max: 470.0
+    vol_water_content_at_-1500_kPa:
+      mean: 195.61778259277344
+      std: 56.337467193603516
+      min: 0.0
+      max: 303.0
+    vol_water_content_at_-33_kPa:
+      mean: 320.565673828125
+      std: 89.82173919677734
+      min: 0.0
+      max: 402.0
+    drought_code:
+      mean: 176.9931640625
+      std: 155.38079833984375
+      min: 0.0
+      max: 757.0
+    precipitation:
+      mean: 1.5899078845977783
+      std: 5.322537899017334
+      min: 0.0
+      max: 86.0
+    seismic_magnitude:
+      mean: 4.0264218114316463e-05
+      std: 0.001721782609820366
+      min: 0.0
+      max: 0.5
+    ssm:
+      mean: 52.99617004394531
+      std: 35.852108001708984
+      min: -1638.54931640625
+      max: 872.1615600585938
+    temperature:
+      mean: 13.734886169433594
+      std: 7.696186065673828
+      min: -18.58139991760254
+      max: 34.3286018371582
+    twsan:
+      mean: -1.9403042793273926
+      std: 1.4564979076385498
+      min: -12.05246639251709
+      max: 0.2199999988079071
 optimizer:
   class_path: torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.02)
   init_args:
