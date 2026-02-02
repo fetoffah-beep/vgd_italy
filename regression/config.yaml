@@ -3,7 +3,7 @@ training:
   identifier: vgd
   usecase: displacement
   epochs: 1
-  batch_size: 32
+  batch_size: 16
   num_workers: 0
   seq_len: 40
 model:

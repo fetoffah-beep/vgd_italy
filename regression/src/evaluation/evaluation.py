@@ -40,11 +40,7 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
     
     
     with torch.no_grad():  # Disable gradient computation
-        for sample_idx, sample in enumerate(tqdm(test_loader, desc='Iterating over test data')): 
-            
-            if sample_idx>1:
-                break
-                
+        for sample_idx, sample in enumerate(tqdm(test_loader, desc='Iterating over test data')):                 
             dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
             dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
             outputs = model(dynamic_cont, static_cont, dynamic_cat, static_cat)
@@ -52,6 +48,9 @@ def evaluate_model(model, test_loader, config_path, device="cpu", show_plot=True
             
             predictions.append(outputs.cpu().numpy())
             ground_truth.append(targets.cpu().numpy())
+
+            if sample_idx+1 >1:
+                break
 
     predictions = np.concatenate(predictions, axis=0).squeeze()
     ground_truth = np.concatenate(ground_truth, axis=0).squeeze()

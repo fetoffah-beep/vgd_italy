@@ -28,19 +28,16 @@ class VGDDataLoader:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.shuffle = shuffle
+        self.pin_memory = torch.cuda.is_available()
+        self.persistent_workers = self.num_workers > 0
+        self.prefetch_factor = 2
 
         self.data_loader = self._create_dataloaders()
         
     @profile
     def _create_dataloaders(self):
-        pin_memory = torch.cuda.is_available()
-        persistent_workers = self.num_workers > 0
-        prefetch_factor = 2
-
-
-
         data_loader = DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=self.shuffle,
-                                  pin_memory=pin_memory, persistent_workers =persistent_workers) #, prefetch_factor=prefetch_factor)
+                                  pin_memory=self.pin_memory, persistent_workers =self.persistent_workers) #, prefetch_factor=prefetch_factor)
         
         return data_loader
 

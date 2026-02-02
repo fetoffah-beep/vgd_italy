@@ -29,7 +29,7 @@ def csv2xarray(data_path, res=0.0005):
     # fall within the resolution cell and then use cubic interpolation to interpolate for the non-point areas
     # Using the points directly implies that for non-station areas, they'll have 
     # same seismic magnitude as the point areas which is not true
-    df = pd.read_csv(data_path)
+    df = pd.read_csv(data_path, dtype='float32')
     
     coords = df[["Longitude", "Latitude"]].copy()
     time_values = pd.to_datetime(df.columns[2:])  # convert column names to datetime
@@ -75,6 +75,9 @@ class VGDDataset(Dataset):
         self.data_dir           = data_dir
         self.seq_len            = config["training"]["seq_len"]
         config = config
+        self.static_data = {}
+        self.dynamic_data = {}
+        self.seismic_tree = {}
 
         self.num_dynamic_features = None
 
@@ -195,16 +198,22 @@ class VGDDataset(Dataset):
             self.mask = self.mask.rename({k: v for k, v in rename_dict.items() if k in self.mask.dims})
             self.mask = self.mask.sel(longitude=slice(min_lon, max_lon), latitude=slice(max_lat, min_lat)).astype('uint8')            
         
-                # Compute the num of features. These will be used to instantiate the model
+        self.var_categories['mask'] = np.array([0,1], dtype='uint8')
+        self.categorical_vars.append('mask')
+            
+        self.categorical_vars.append('month')
+        self.static_data['mask'] = self.mask
+
+        # Compute the num of features. These will be used to instantiate the model
         if self.model_type == 'Time_series':
             self.num_dynamic_features = 2
 
             self.num_static_features = 1
+
+            self.dynamic_data['month'] = self.create_months_data()
+
         else:
             print('Opening the predictors ...................')
-            self.static_data = {}
-            self.dynamic_data = {}
-            self.seismic_tree = {}
             data = self.get_predictors(min_lon, max_lon, min_lat, max_lat, slice_data=True)
             
             # print("Pre-loading patches into RAM...")
@@ -217,10 +226,8 @@ class VGDDataset(Dataset):
             #             continue
             #         ds.load()
 
-            self.static_data['mask'] = self.mask
-            self.categorical_vars.append('mask')
-            self.var_categories['mask'] = np.array([0,1], dtype='uint8')
-            self.categorical_vars.append('month')
+            
+            
 
             if self.model_type == 'Explanatory':
                 self.num_dynamic_features = len(self.dynamic_data)
@@ -245,6 +252,16 @@ class VGDDataset(Dataset):
             
         # We now compute stats on the training data for data normalisation purposes        
         self.stats= self.compute_stats(self.metadata)  
+
+        self.num_samples = len(self.metadata) * (len(self.data_time) - self.seq_len)
+
+    @profile  
+    def __len__(self):
+        # Total sample length = num_stations * (total_time_Steps - seq_len)
+        # We define the len based on the coherent points
+        return self.num_samples
+    
+
 
     @profile
     def _get_station_indices(self):
@@ -308,13 +325,6 @@ class VGDDataset(Dataset):
 
             indices[variable_name] = np.asarray(mp_indices)
         return indices, displacement_indices
-
-    @profile  
-    def __len__(self):
-        # Total sample length = num_stations * (total_time_Steps - seq_len)
-        # We define the len based on the coherent points
-        return len(self.metadata) * (len(self.data_time) - self.seq_len)
-
     
     @profile
     def __getitem__(self, item_idx):
@@ -340,7 +350,7 @@ class VGDDataset(Dataset):
             mask_sample = mask_ds['mask'].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
             
-            # Replace the *raw code* with the sequential index
+            # Replace the raw code with the sequential index
             for raw_code, cat_idx in self.cat_indices['mask'].items():
                 mask_sample[mask_sample == int(raw_code)] = cat_idx
 
@@ -371,77 +381,475 @@ class VGDDataset(Dataset):
 
 
         if self.model_type in ['Explanatory', 'Mixed']:
+
             # Get the predictors
-            for variable_name in self.static_data.keys():
-                ds = self.static_data[variable_name]
-                # Get the indices for the neighbours of this station using the precomputed station_indices
-                neighbor_indices = self.station_indices[variable_name][idx]
-                sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-                
-                # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
-                if variable_name in self.categorical_vars:
-                    # Replace the *raw code* with the sequential index
-                    for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                        sampled[sampled == int(raw_code)] = cat_idx
-                    sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
-                    
-                else:
-                    # Replace NaNs with the mean value of the variable
-                    nan_mask = ~np.isfinite(sampled)
-                    if np.any(nan_mask):
-                        sampled[nan_mask] = self.stats[variable_name]['mean']
+            # bulk_density
+            variable_name = 'bulk_density'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-                    sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
-                    
-                    sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
-                    
-                    # sampled = self.min_max_scale(sampled, self.stats[variable_name]['min'], self.stats[variable_name]['max'])
-                    
-            for variable_name in self.dynamic_data.keys():
-                ds = self.dynamic_data[variable_name]
-                # Get the indices for the neighbours of this station using the precomputed station_indices
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
                 
-                if variable_name =='seismic_magnitude':
-                    radius = 0.01
-                    mp_idx = self.seismic_tree.query_ball_point([coherent_mp["lon"], coherent_mp["lat"]], r=radius)
-                    if len(mp_idx)>0:
-                        mp_seismic = ds.isel(point=mp_idx).mean(dim='point')
-                        mp_seismic = mp_seismic[variable_name].sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy()
-                        
-                    else:
-                        mp_seismic = np.zeros(self.seq_len, dtype=np.float32)
-                        
-                    sampled = np.broadcast_to(mp_seismic[:, None, None], (self.seq_len, 5, 5))
-                    sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)                   
+
+            # clay_content
+            variable_name = 'clay_content'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+            # dem
+            variable_name = 'clay_content'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+            # genua
+            variable_name = 'genua'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+            # ksat
+            variable_name = 'ksat'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # lithology
+            variable_name = 'lithology'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            for raw_code, cat_idx in self.cat_indices[variable_name].items():
+                sampled[sampled == int(raw_code)] = cat_idx
+            sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+
+            
+            # lulc
+            variable_name = 'lulc'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            for raw_code, cat_idx in self.cat_indices[variable_name].items():
+                sampled[sampled == int(raw_code)] = cat_idx
+            sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+
+
+
+            # population_density_2020_1km
+            variable_name = 'population_density_2020_1km'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+
+
+
+            # projected_subsidence_2040
+            variable_name = 'projected_subsidence_2040'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            for raw_code, cat_idx in self.cat_indices[variable_name].items():
+                sampled[sampled == int(raw_code)] = cat_idx
+            sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+
+            # sand
+            variable_name = 'sand'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # silt
+            variable_name = 'silt'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # slope
+            variable_name = 'slope'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # soil_organic_carbon
+            variable_name = 'soil_organic_carbon'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # subsidence_susceptibility_2010
+            variable_name = 'subsidence_susceptibility_2010'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            for raw_code, cat_idx in self.cat_indices[variable_name].items():
+                sampled[sampled == int(raw_code)] = cat_idx
+            sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+
+
+            # vol_water_content_at_-33_kPa
+            variable_name = 'vol_water_content_at_-33_kPa'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # vol_water_content_at_-1500_kPa
+            variable_name = 'vol_water_content_at_-1500_kPa'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+            # vol_water_content_at_-10_kPa
+            variable_name = 'vol_water_content_at_-10_kPa'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+
+
+
+
+            # seismic_magnitude
+            variable_name ='seismic_magnitude'
+            radius = 0.01
+            mp_idx = self.seismic_tree.query_ball_point([coherent_mp["lon"], coherent_mp["lat"]], r=radius)
+            if len(mp_idx)>0:
+                mp_seismic = ds.isel(point=mp_idx).mean(dim='point')
+                mp_seismic = mp_seismic[variable_name].sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy()
+                
+            else:
+                mp_seismic = np.zeros(self.seq_len, dtype=np.float32)
+                
+            sampled = np.broadcast_to(mp_seismic[:, None, None], (self.seq_len, 5, 5))
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)   
+
+
+            # drought_code
+            variable_name ='drought_code'
+            neighbor_indices = self.station_indices[variable_name][idx]
                     
-                else:
-                    neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # precipitation
+            variable_name ='precipitation'
+            neighbor_indices = self.station_indices[variable_name][idx]
                     
-                    if variable_name=='month':
-                        sampled = ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                                    latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                    else:
-                        sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                                    latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                        
-                    # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
-                    if variable_name in self.categorical_vars:
-                        # Replace the *raw code* with the sequential index
-                        for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # twsan
+            variable_name ='twsan'
+            neighbor_indices = self.station_indices[variable_name][idx]
+                    
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # ssm
+            variable_name ='ssm'
+            neighbor_indices = self.station_indices[variable_name][idx]
+                    
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # temperature
+            variable_name ='temperature'
+            neighbor_indices = self.station_indices[variable_name][idx]
+                    
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
+
+            # month
+            variable_name='month'
+            sampled = ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                                latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                    
+            for raw_code, cat_idx in self.cat_indices[variable_name].items():
                             sampled[sampled == int(raw_code)] = cat_idx
-                        sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
+            sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
+
+
+
+            # Get the predictors
+            # for variable_name in self.static_data.keys():
+            #     ds = self.static_data[variable_name]
+            #     # Get the indices for the neighbours of this station using the precomputed station_indices
+            #     neighbor_indices = self.station_indices[variable_name][idx]
+            #     sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+            #                                     latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+
+                
+            #     # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
+            #     if variable_name in self.categorical_vars:
+            #         # Replace the *raw code* with the sequential index
+            #         for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #             sampled[sampled == int(raw_code)] = cat_idx
+            #         sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+                    
+            #     else:
+            #         # Replace NaNs with the mean value of the variable
+            #         nan_mask = ~np.isfinite(sampled)
+            #         if np.any(nan_mask):
+            #             sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            #         sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+                    
+            #         sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+                    
+            #         # sampled = self.min_max_scale(sampled, self.stats[variable_name]['min'], self.stats[variable_name]['max'])
+                    
+            # for variable_name in self.dynamic_data.keys():
+            #     ds = self.dynamic_data[variable_name]
+            #     # Get the indices for the neighbours of this station using the precomputed station_indices
+                
+            #     if variable_name =='seismic_magnitude':
+            #         radius = 0.01
+            #         mp_idx = self.seismic_tree.query_ball_point([coherent_mp["lon"], coherent_mp["lat"]], r=radius)
+            #         if len(mp_idx)>0:
+            #             mp_seismic = ds.isel(point=mp_idx).mean(dim='point')
+            #             mp_seismic = mp_seismic[variable_name].sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy()
                         
-                    else:
-                        # Replace NaNs with the mean value of the variable
-                        nan_mask = ~np.isfinite(sampled)
-                        if np.any(nan_mask):
-                            sampled[nan_mask] = self.stats[variable_name]['mean']
+            #         else:
+            #             mp_seismic = np.zeros(self.seq_len, dtype=np.float32)
+                        
+            #         sampled = np.broadcast_to(mp_seismic[:, None, None], (self.seq_len, 5, 5))
+            #         sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)                   
+                    
+            #     else:
+            #         neighbor_indices = self.station_indices[variable_name][idx]
+                    
+            #         if variable_name=='month':
+            #             sampled = ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+            #                                         latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+            #         else:
+            #             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+            #                                         latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+                        
+            #         # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
+            #         if variable_name in self.categorical_vars:
+            #             # Replace the *raw code* with the sequential index
+            #             for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #                 sampled[sampled == int(raw_code)] = cat_idx
+            #             sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
+                        
+            #         else:
+            #             # Replace NaNs with the mean value of the variable
+            #             nan_mask = ~np.isfinite(sampled)
+            #             if np.any(nan_mask):
+            #                 sampled[nan_mask] = self.stats[variable_name]['mean']
         
-                        sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+            #             sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
                         
-                        sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            #             sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
                             
                             # sampled = self.min_max_scale(sampled, self.stats[variable_name]['min'], self.stats[variable_name]['max'])
                             
@@ -564,20 +972,23 @@ class VGDDataset(Dataset):
                     self.dynamic_data[variable_name] = data_ds
                     # Add time(month) as dynamic variable:
                     if 'time' in data_ds.dims and 'month' not in self.dynamic_data:
-                        month_values = data_ds.time.dt.month.astype('uint8')
-                        self.var_categories['month'] = np.unique(month_values)
-                        month_values = month_values.broadcast_like(data_ds[variable_name])
-                        
-                        self.dynamic_data['month'] = month_values.chunk({
-                            "time": time_chunk, 
-                            "latitude": 256, 
-                            "longitude": 256
-                        })
-                        
-                        
+                        self.dynamic_data['month'] = self.create_months_data()
                         
                 else:
                     self.static_data[variable_name] = data_ds
+
+    @profile
+    def create_months_data(self):
+        with xr.open_dataset("original_data/ssm.nc", engine='h5netcdf') as ds:
+            month_values = ds.time.dt.month.astype('uint8')
+            self.var_categories['month'] = np.unique(month_values)
+            month_values = month_values.broadcast_like(ds['ssm'])
+            
+            return month_values.chunk({
+                "time": -1, 
+                "latitude": 256, 
+                "longitude": 256
+            })
 
     @profile
     def get_categories(self, var_name):
@@ -613,7 +1024,7 @@ class VGDDataset(Dataset):
 
         config_path = 'config.yaml'
 
-        if self.split == 'trainingsss':
+        if self.split == 'traininglll':
             print(f'Computing transformation parameters for the {self.split} set')
             stats = {   
                         'displacement': 

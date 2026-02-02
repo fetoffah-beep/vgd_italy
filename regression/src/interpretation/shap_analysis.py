@@ -63,8 +63,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
     
     shap_data = []
     for sample_idx, sample in enumerate(tqdm(data_loader)):
-        if sample_idx > 1:
-            break
+        
 
         dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
         dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
@@ -98,6 +97,9 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
             })
         #     break
         # break
+
+        if sample_idx+1 > 1:
+            break
         
 
         

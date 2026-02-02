@@ -90,8 +90,6 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
 
 
             for sample_idx, sample in enumerate(tqdm(train_loader, desc='Iterating over training data')): 
-                if sample_idx>2:
-                    break
                 dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
                 dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
                 optimizer.zero_grad()
@@ -214,7 +212,8 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                             log_message(f"\n Early stopping at step {step} (epoch {epoch + 1})", log_f)
                             plot_losses(interval_training_loss, interval_val_loss)
                             return
-                        
+                if sample_idx+1 > 2:
+                    break        
                 
                
     
@@ -226,9 +225,6 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
             val_targ = []
             with torch.no_grad():
                 for sample_idx, val_sample in enumerate(tqdm(val_loader, desc='Epoch validation')):
-                        
-                    if sample_idx>1:
-                        break
                     val_dynamic_cont, val_static_cont, val_dynamic_cat, val_static_cat, val_targets = val_sample['dynamic_cont'], val_sample['static_cont'], val_sample['dynamic_cat'], val_sample['static_cat'], val_sample['target']
                     val_dynamic_cont, val_static_cont, val_dynamic_cat, val_static_cat, val_targets = val_dynamic_cont.to(device), val_static_cont.to(device), val_dynamic_cat.to(device), val_static_cat.to(device), val_targets.to(device)
                     
@@ -240,6 +236,9 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
                     
                     val_preds.append(val_outputs.cpu().numpy())
                     val_targ.append(val_targets.cpu().numpy())
+
+                    if sample_idx+1 >1:
+                        break
             
 
             

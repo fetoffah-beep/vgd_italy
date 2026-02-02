@@ -23,6 +23,7 @@ def shap_plot(ds):
     # global explanation) of the feature attribution values for the first 10 examples from
     # our test set with the following
     plt.close()
+    plt.figure(figsize=(20, 8))
     shap.summary_plot(shap_values, feature_names=feature_names, title=f"Global Feature Importance")
     plt.savefig(f'output/global_feature_importance_1_{timestamp}.png')
     shap.summary_plot(shap_values, feature_names=feature_names, title=f"Global Feature Importance", plot_type="bar")
@@ -34,6 +35,7 @@ def shap_plot(ds):
     ########### Force plot ###########
     # The feature attribution values for one example from our fuel efficiency pre‐
     # diction model.
+    plt.figure(figsize=(20, 8))
     shap_values = np.array([ds[feature].values.flatten()[0] for feature in feature_names])
     base_value = np.mean(shap_values)
     feature_values = np.zeros_like(shap_values)
