@@ -675,6 +675,7 @@ class VGDDataset(Dataset):
 
             # seismic_magnitude
             variable_name ='seismic_magnitude'
+            ds = self.dynamic_data[variable_name]
             radius = 0.01
             mp_idx = self.seismic_tree.query_ball_point([coherent_mp["lon"], coherent_mp["lat"]], r=radius)
             if len(mp_idx)>0:
@@ -690,6 +691,7 @@ class VGDDataset(Dataset):
 
             # drought_code
             variable_name ='drought_code'
+            ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
@@ -706,6 +708,7 @@ class VGDDataset(Dataset):
 
             # precipitation
             variable_name ='precipitation'
+            ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
@@ -722,6 +725,7 @@ class VGDDataset(Dataset):
 
             # twsan
             variable_name ='twsan'
+            ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
@@ -738,6 +742,7 @@ class VGDDataset(Dataset):
 
             # ssm
             variable_name ='ssm'
+            ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
@@ -754,6 +759,7 @@ class VGDDataset(Dataset):
 
             # temperature
             variable_name ='temperature'
+            ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
@@ -770,11 +776,12 @@ class VGDDataset(Dataset):
 
             # month
             variable_name='month'
+            ds = self.dynamic_data[variable_name]
             sampled = ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                                 latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
                     
             for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                            sampled[sampled == int(raw_code)] = cat_idx
+                sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
 
 
@@ -919,7 +926,7 @@ class VGDDataset(Dataset):
                 else:
                     continue
 
-                data_ds = xr.open_dataset(os.path.join(self.data_dir, file), engine=engine, chunks='auto')
+                data_ds = xr.open_dataset(os.path.join(self.data_dir, file), engine=engine, chunks={"time": -1, "latitude": 256, "longitude": 256})
                 
                 if 'ssm_noise' in data_ds:
                     data_ds = data_ds.drop_vars('ssm_noise')
@@ -980,6 +987,9 @@ class VGDDataset(Dataset):
     @profile
     def create_months_data(self):
         with xr.open_dataset("original_data/ssm.nc", engine='h5netcdf') as ds:
+            rename_dict = {'x': 'longitude', 'y': 'latitude', 'lon': 'longitude', 'lat': 'latitude', 'band':'time'}
+            ds = ds.rename({k: v for k, v in rename_dict.items() if k in ds.dims})
+
             month_values = ds.time.dt.month.astype('uint8')
             self.var_categories['month'] = np.unique(month_values)
             month_values = month_values.broadcast_like(ds['ssm'])
@@ -1024,7 +1034,7 @@ class VGDDataset(Dataset):
 
         config_path = 'config.yaml'
 
-        if self.split == 'traininglll':
+        if self.split == 'trainingssss':
             print(f'Computing transformation parameters for the {self.split} set')
             stats = {   
                         'displacement': 

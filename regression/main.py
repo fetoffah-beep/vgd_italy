@@ -22,7 +22,7 @@ import line_profiler
 from line_profiler import profile
 
 # from codecarbon import EmissionsTracker
-
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 @profile
@@ -66,7 +66,7 @@ def main(config, split_pattern, model_type):
 
 
     # Initialize the model
-    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.var_categories, hidden_size, output_size)
+    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.cat_indices, hidden_size, output_size)
 
     model_optimizer = torch.optim.Adam(
                         model.parameters(),
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file)
 
 
-    split_patterns = ['spatial','temporal', 'spatio_temporal', 'spatial_train_val']
+    split_patterns = ['spatial','temporal'] #'spatio_temporal', 'spatial_train_val'
     model_types = ['Explanatory', 'Time_series', 'Mixed']
         
 
