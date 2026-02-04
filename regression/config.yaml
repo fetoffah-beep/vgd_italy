@@ -14,7 +14,7 @@ model:
   - 128
   - 64
   - 32
-  device: cuda
+  device: cpu
   model_path: null
 data:
   categories:

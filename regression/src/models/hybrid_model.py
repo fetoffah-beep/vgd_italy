@@ -68,8 +68,8 @@ class VGDModel(nn.Module):
         # categorical elements while another is that the embedding dimension should be approximately 1.6 
         # times the square root of the number of unique elements in the category, and no less than 600.
         # If we are doing hyperparameter tuning, it might be worth searching within this range.
-        self.embeddings = torch.nn.ModuleDict({
-            var_name: torch.nn.Embedding(num_embeddings=len(classes), embedding_dim=max(2, int(1.6 * (len(classes)**0.5))))
+        self.embeddings = nn.ModuleDict({
+            var_name: nn.Embedding(num_embeddings=len(classes), embedding_dim=max(2, int(1.6 * (len(classes)**0.5))))
             for var_name, classes in cat_info.items()
         })
 

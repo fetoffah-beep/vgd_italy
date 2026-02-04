@@ -11,23 +11,24 @@ os.makedirs(output_dir, exist_ok=True)
 variables_config = {
     'static': {
         'bulk_density': {'file': 'bulk_density.tif', 'dtype': 'float32'},
-        'clay': {'file': 'clay_content.tif', 'dtype': 'float32'},
+        'clay_content': {'file': 'clay_content.tif', 'dtype': 'float32'},
         'dem': {'file': 'dem.tif', 'dtype': 'float32'},
         'genua': {'file': 'genua.nc', 'dtype': 'float32'},
         'ksat': {'file': 'ksat.nc', 'dtype': 'float32'},
         'lithology': {'file': 'lithology.tif', 'dtype': 'uint8'}, 
         'lulc': {'file': 'lulc.tif', 'dtype': 'uint8'},   
-        'pop_density': {'file': 'population_density_2020_1km.tif', 'dtype': 'float32'},
+        'mask': {'file': 'mask.nc', 'dtype': 'uint8'}, 
+        'population_density_2020_1km': {'file': 'population_density_2020_1km.tif', 'dtype': 'float32'},
         'projected_subsidence_2040': {'file': 'projected_subsidence_2040.tif', 'dtype': 'uint8'},        
         'sand': {'file': 'sand.tif', 'dtype': 'float32'},
         'silt': {'file': 'silt.tif', 'dtype': 'float32'},
         'slope': {'file': 'slope.tif', 'dtype': 'float32'},
         'soil_organic_carbon': {'file': 'soil_organic_carbon.tif', 'dtype': 'float32'},
-        'subsidence_susceptibility': {'file': 'subsidence_susceptibility_2010.tif', 'dtype': 'uint8'},
-        'topo_wetness': {'file': 'topo_wetness_index.tif', 'dtype': 'float32'},
-        'vwc_10': {'file': 'vol_water_content_at_-10_kPa.tif', 'dtype': 'float32'},
-        'vwc_1500': {'file': 'vol_water_content_at_-1500_kPa.tif', 'dtype': 'float32'},
-        'vwc_33': {'file': 'vol_water_content_at_-33_kPa.tif', 'dtype': 'float32'}
+        'subsidence_susceptibility_2010': {'file': 'subsidence_susceptibility_2010.tif', 'dtype': 'uint8'},
+        'topo_wetness_index': {'file': 'topo_wetness_index.tif', 'dtype': 'float32'},
+        'vol_water_content_at_-10_kPa': {'file': 'vol_water_content_at_-10_kPa.tif', 'dtype': 'float32'},
+        'vol_water_content_at_-1500_kPa': {'file': 'vol_water_content_at_-1500_kPa.tif', 'dtype': 'float32'},
+        'vol_water_content_at_-33_kPa': {'file': 'vol_water_content_at_-33_kPa.tif', 'dtype': 'float32'}
     },
     'dynamic': {
         'drought_code': {'file': 'drought_code.tif', 'dtype': 'float32'},
@@ -91,12 +92,14 @@ def process_variable(var_name, config, is_dynamic=False):
                 ds[c].attrs.update(coord_attrs[c])
                 
 
+        n_time = ds.sizes['time']
         encoding = {
             var_name: {
                 "zlib": True, 
                 "complevel": 0, 
                 "dtype": target_dtype,
-                "compression": "gzip",
+                "chunksizes": (n_time, min(256, ds.sizes['latitude']), min(256, ds.sizes['longitude'])),
+                # "compression": "gzip",
                 "compression_opts": 0
             }
         }
@@ -109,7 +112,7 @@ def process_variable(var_name, config, is_dynamic=False):
     except Exception as e:
         print(f"Error processing {var_name}: {e}")
 
-# Main execution loop
+
 print('converting tif to netcdf ....')
 for var, cfg in variables_config['static'].items():
     print(f' {var}\n')

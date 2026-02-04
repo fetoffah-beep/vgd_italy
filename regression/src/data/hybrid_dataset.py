@@ -106,14 +106,14 @@ class VGDDataset(Dataset):
             # "Use all metadata points" - combine all three files
             print(f"Combining and transforming all metadata for {split_pattern} split to EPSG 4326'")
             files = ["train_metadata.csv", "validation_metadata.csv", "test_metadata.csv"]
-            self.metadata = pd.concat([pd.read_csv(os.path.join(base_path, f), engine='pyarrow') for f in files])
+            self.metadata = pd.concat([pd.read_csv(os.path.join(base_path, f), engine='pyarrow') for f in files])[:100]
             
         elif split_pattern in ['spatial', 'spatio_temporal', 'spatial_train_val']:
             # "Use according to split" - only load the file matching self.split
             print(f"Reading metadata for {split_pattern} split and transforming {self.split} metadata to EPSG 4326'")
             path = os.path.join(base_path, f"{self.split}_metadata.csv")
             print(f"Loading {self.split} metadata from {path}")
-            self.metadata = pd.read_csv(path, engine='pyarrow')
+            self.metadata = pd.read_csv(path, engine='pyarrow')[:100]
         else:
             print(f'No metadata found for {split_pattern}')
             return
@@ -236,29 +236,30 @@ class VGDDataset(Dataset):
 
             self.num_static_features = len(self.static_data)
 
-            # Convert the categorical values into indices for embedding during training
+            # # Convert the categorical values into indices for embedding during training
             self.cat_indices = {}
-            for var_name, categories in self.var_categories.items():
-                self.cat_indices[var_name] = {
-                    str(category): idx 
-                    for idx, category in enumerate(categories)
-                }
+            # for var_name, categories in self.var_categories.items():
+            #     self.cat_indices[var_name] = {
+            #         str(category): idx 
+            #         for idx, category in enumerate(categories)
+            #     }
             
             # To do:
             # find the nearest neighbor to each measurement point from the feature array using coordinates and store as indices, 
             # This is feature dependent
 
-            self.station_indices, self.displacement_indices = self._get_station_indices()
+            self.station_indices, self.time_indices, self.displacement_indices = self._get_station_indices()
             
         # We now compute stats on the training data for data normalisation purposes        
-        self.stats= self.compute_stats(self.metadata)  
+        self.stats= self.compute_stats(self.metadata)
 
+        # Total sample length = num_stations * (total_time_Steps - seq_len)
+        # We define the len based on the coherent points
         self.num_samples = len(self.metadata) * (len(self.data_time) - self.seq_len)
 
     @profile  
     def __len__(self):
-        # Total sample length = num_stations * (total_time_Steps - seq_len)
-        # We define the len based on the coherent points
+        
         return self.num_samples
     
 
@@ -267,18 +268,28 @@ class VGDDataset(Dataset):
     def _get_station_indices(self):
         print("Pre-computing indices for the coherent stations")
         indices = {}
+        time_indices = {}
         displacement_indices = {}
 
         # For each variable, Find the nearest grid indices for each neighbor coordinate and store
         for variable_name in list(self.static_data.keys()) + list(self.dynamic_data.keys()):
-             
             print(f"    {variable_name}")
             if variable_name == 'seismic_magnitude':
+                continue
+            if variable_name == 'twsan':
                 continue
             if variable_name in self.static_data:
                 ds = self.static_data[variable_name]
             elif variable_name in self.dynamic_data:
                 ds = self.dynamic_data[variable_name]
+                # Compute the temporal indices for each sample
+                ds_time = ds.coords['time'].values
+                t_idx = np.searchsorted(ds_time, self.data_time.values)
+                t_idx = np.clip(t_idx, 0, len(ds_time) - 1)
+                time_indices[variable_name] = t_idx.astype('int32')
+                
+
+
             else:
                 continue
             
@@ -324,7 +335,7 @@ class VGDDataset(Dataset):
                 mp_indices.append(np.stack([iy.astype('int32'), ix.astype('int32')], axis=1))
 
             indices[variable_name] = np.asarray(mp_indices)
-        return indices, displacement_indices
+        return indices, time_indices, displacement_indices
     
     @profile
     def __getitem__(self, item_idx):
@@ -350,16 +361,21 @@ class VGDDataset(Dataset):
             mask_sample = mask_ds['mask'].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
             
-            # Replace the raw code with the sequential index
-            for raw_code, cat_idx in self.cat_indices['mask'].items():
-                mask_sample[mask_sample == int(raw_code)] = cat_idx
+            # # Replace the raw code with the sequential index
+            # for raw_code, cat_idx in self.cat_indices['mask'].items():
+            #     mask_sample[mask_sample == int(raw_code)] = cat_idx
 
             month_ds = self.dynamic_data['month']
-            month_sample = month_ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+            time_indices = self.time_indices['month'][time_idx : time_idx + self.seq_len]
+
+            month_sample = month_ds.isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5) #.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
             
-            for raw_code, cat_idx in self.cat_indices['month'].items():
-                month_sample[month_sample == int(raw_code)] = cat_idx
+            
+            # for raw_code, cat_idx in self.cat_indices['month'].items():
+            #     month_sample[month_sample == int(raw_code)] = cat_idx
 
             
             displacement_idx = self.displacement_indices[idx]
@@ -479,8 +495,8 @@ class VGDDataset(Dataset):
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-            for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                sampled[sampled == int(raw_code)] = cat_idx
+            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
 
             
@@ -492,8 +508,8 @@ class VGDDataset(Dataset):
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-            for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                sampled[sampled == int(raw_code)] = cat_idx
+            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
 
 
@@ -527,8 +543,8 @@ class VGDDataset(Dataset):
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-            for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                sampled[sampled == int(raw_code)] = cat_idx
+            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
 
             # sand
@@ -611,8 +627,8 @@ class VGDDataset(Dataset):
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
                                             latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
 
-            for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                sampled[sampled == int(raw_code)] = cat_idx
+            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
 
 
@@ -670,9 +686,6 @@ class VGDDataset(Dataset):
             sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
             
 
-
-
-
             # seismic_magnitude
             variable_name ='seismic_magnitude'
             ds = self.dynamic_data[variable_name]
@@ -693,9 +706,12 @@ class VGDDataset(Dataset):
             variable_name ='drought_code'
             ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
-                    
-            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds[variable_name].isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
                 
             nan_mask = ~np.isfinite(sampled)
             if np.any(nan_mask):
@@ -711,9 +727,12 @@ class VGDDataset(Dataset):
             ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
-            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds[variable_name].isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+               
             nan_mask = ~np.isfinite(sampled)
             if np.any(nan_mask):
                 sampled[nan_mask] = self.stats[variable_name]['mean']
@@ -723,21 +742,21 @@ class VGDDataset(Dataset):
             sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
-            # twsan
-            variable_name ='twsan'
-            ds = self.dynamic_data[variable_name]
-            neighbor_indices = self.station_indices[variable_name][idx]
+            # # twsan
+            # variable_name ='twsan'
+            # ds = self.dynamic_data[variable_name]
+            # neighbor_indices = self.station_indices[variable_name][idx]
                     
-            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+            # sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+            #                                 latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
                 
-            nan_mask = ~np.isfinite(sampled)
-            if np.any(nan_mask):
-                sampled[nan_mask] = self.stats[variable_name]['mean']
+            # nan_mask = ~np.isfinite(sampled)
+            # if np.any(nan_mask):
+            #     sampled[nan_mask] = self.stats[variable_name]['mean']
 
-            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+            # sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
 
-            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            # sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
             # ssm
@@ -745,9 +764,12 @@ class VGDDataset(Dataset):
             ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
-            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds[variable_name].isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+               
             nan_mask = ~np.isfinite(sampled)
             if np.any(nan_mask):
                 sampled[nan_mask] = self.stats[variable_name]['mean']
@@ -762,9 +784,12 @@ class VGDDataset(Dataset):
             ds = self.dynamic_data[variable_name]
             neighbor_indices = self.station_indices[variable_name][idx]
                     
-            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds[variable_name].isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+               
             nan_mask = ~np.isfinite(sampled)
             if np.any(nan_mask):
                 sampled[nan_mask] = self.stats[variable_name]['mean']
@@ -777,11 +802,14 @@ class VGDDataset(Dataset):
             # month
             variable_name='month'
             ds = self.dynamic_data[variable_name]
-            sampled = ds.isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                                latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
-                    
-            for raw_code, cat_idx in self.cat_indices[variable_name].items():
-                sampled[sampled == int(raw_code)] = cat_idx
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds.isel(
+                time=xr.DataArray(time_indices, dims="time"),
+                longitude=xr.DataArray(neighbor_indices[:, 1]),
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+                   
+            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
 
 
@@ -798,8 +826,8 @@ class VGDDataset(Dataset):
             #     # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
             #     if variable_name in self.categorical_vars:
             #         # Replace the *raw code* with the sequential index
-            #         for raw_code, cat_idx in self.cat_indices[variable_name].items():
-            #             sampled[sampled == int(raw_code)] = cat_idx
+            ##         for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            ##             sampled[sampled == int(raw_code)] = cat_idx
             #         sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
                     
             #     else:
@@ -844,8 +872,8 @@ class VGDDataset(Dataset):
             #         # Normalize the continuos variables, categorical variables will be embedded in the model so we use their indices
             #         if variable_name in self.categorical_vars:
             #             # Replace the *raw code* with the sequential index
-            #             for raw_code, cat_idx in self.cat_indices[variable_name].items():
-            #                 sampled[sampled == int(raw_code)] = cat_idx
+            ##             for raw_code, cat_idx in self.cat_indices[variable_name].items():
+            ##                 sampled[sampled == int(raw_code)] = cat_idx
             #             sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
                         
             #         else:
@@ -970,7 +998,7 @@ class VGDDataset(Dataset):
                     if dim == 'time':
                         data_chunk[dim] = time_chunk
                     elif dim in ['latitude', 'longitude']:
-                        data_chunk[dim] = 256
+                        data_chunk[dim] = 1024
                 data_ds = data_ds.chunk(data_chunk)
 
                 

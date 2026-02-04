@@ -66,7 +66,7 @@ def main(config, split_pattern, model_type):
 
 
     # Initialize the model
-    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.cat_indices, hidden_size, output_size)
+    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.var_categories, hidden_size, output_size)
 
     model_optimizer = torch.optim.Adam(
                         model.parameters(),
@@ -163,16 +163,16 @@ if __name__ == "__main__":
     scratch_dir = "./dask_scratch" 
     
     # close any existing clients
-    # try:
-    #     client = Client.current()
-    #     client.close()
-    # except ValueError:
-    #     pass
+    try:
+        client = Client.current()
+        client.close()
+    except ValueError:
+        pass
     
-    # cluster = LocalCluster(n_workers=8, threads_per_worker=1, memory_limit='8GB', local_directory=scratch_dir, scheduler_port=8786, dashboard_address=':8787', silence_logs=50)
+    cluster = LocalCluster(n_workers=8, threads_per_worker=1, memory_limit='8GB', local_directory=scratch_dir, scheduler_port=8786, dashboard_address=':8787', silence_logs=50)
 
-    # client = Client(cluster)
-    # print(f"Dask Dashboard available at: {client.dashboard_link} \n")
+    client = Client(cluster)
+    print(f"Dask Dashboard available at: {client.dashboard_link} \n")
     
     for model_type in model_types:
         for split_pattern in split_patterns:
@@ -191,9 +191,9 @@ if __name__ == "__main__":
     # emissions = tracker.stop()
     # print(emissions)
 
-    # cluster.close()
+    cluster.close()
     
-    # client.close()
+    client.close()
 
     
     
@@ -202,31 +202,6 @@ if __name__ == "__main__":
 # kernprof -l -v main.py    
 
     
-    # pr.disable()
-
-    # # Save the stats to a file
-    # pr.dump_stats('profile_stats.prof')
-    
-    # # Read and print the top 10 bottlenecks
-    # stats = pstats.Stats('profile_stats.prof').sort_stats('tottime')
-    # stats.print_stats(10)
-    
-
-
-    
-    # do_profiling = True
-    # profile_file = "profile_data.prof"
-    
-    # if do_profiling:
-    #     with cProfile.Profile() as pr:
-    #         main(args)
-
-    #     with open(profile_file, "w") as stream:
-    #         stats = Stats(pr, stream=stream)
-    #         stats.strip_dirs()
-    #         stats.sort_stats("time")
-    #         stats.dump_stats(profile_file)
-    #         stats.print_stats(5)
 
         # 2. Then, from the command line, run:
         # python -m  snakeviz profile_results.prof
