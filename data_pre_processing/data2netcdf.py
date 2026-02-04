@@ -4,8 +4,8 @@ import pandas as pd
 import os
 
 # Define the paths
-input_dir = r"C:\Users\gmfet\Desktop\data"
-output_dir = r"C:\Users\gmfet\Desktop\data\processed_data"
+input_dir = r"./"
+output_dir = r"./processed_data"
 os.makedirs(output_dir, exist_ok=True)
 
 variables_config = {
