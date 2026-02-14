@@ -22,7 +22,6 @@ import line_profiler
 from line_profiler import profile
 
 # from codecarbon import EmissionsTracker
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 @profile
@@ -88,58 +87,58 @@ def main(config, split_pattern, model_type):
     
     
     # Train the model
-    train_model(
-        model,
-        train_loader,
-        val_loader,
-        optimizer,
-        learning_rate,
-        config,
-        start_epoch=start_epoch,
-        num_epochs=num_epochs,
-        checkpoint_path=checkpoint_path,
-    )
+    # train_model(
+    #     model,
+    #     train_loader,
+    #     val_loader,
+    #     optimizer,
+    #     learning_rate,
+    #     config,
+    #     start_epoch=start_epoch,
+    #     num_epochs=num_epochs,
+    #     checkpoint_path=checkpoint_path,
+    # )
     
     
-    # Test/Evaluate the model
-    print("Training complete. Evaluating the model on the test set.")
+    # # Test/Evaluate the model
+    # print("Training complete. Evaluating the model on the test set.")
     
-    results = evaluate_model(model, test_loader, 'config.yaml', device=device)
-    predictions, ground_truth, residuals = (
-        results["predictions"],
-        results["ground_truth"],
-        results["residuals"],
-    )
+    # results = evaluate_model(model, test_loader, 'config.yaml', device=device)
+    # predictions, ground_truth, residuals = (
+    #     results["predictions"],
+    #     results["ground_truth"],
+    #     results["residuals"],
+    # )
 
-    # Compute and display statistics
-    pred_stats = get_summary_stats(predictions)
-    gt_stats = get_summary_stats(ground_truth)
-    res_stats = get_summary_stats(residuals)
+    # # Compute and display statistics
+    # pred_stats = get_summary_stats(predictions)
+    # gt_stats = get_summary_stats(ground_truth)
+    # res_stats = get_summary_stats(residuals)
 
-    print("\n=== Model Evaluation Summary ===")
-    display_summary_stats(pred_stats, label="Predictions")
-    display_summary_stats(gt_stats, label="Ground Truth")
-    display_summary_stats(res_stats, label="Residuals")
+    # print("\n=== Model Evaluation Summary ===")
+    # display_summary_stats(pred_stats, label="Predictions")
+    # display_summary_stats(gt_stats, label="Ground Truth")
+    # display_summary_stats(res_stats, label="Residuals")
 
-    # Visualize results
-    plot_results(ground_truth, predictions, residuals)
+    # # Visualize results
+    # plot_results(ground_truth, predictions, residuals)
 
-    # Perform SHAP analysis for train, validation, and test sets
-    dyn_features = train_dataset.dynamic_data.keys()
-    static_features = train_dataset.static_data.keys()
-    # train_shap = compute_shap(model, train_loader, device, dyn_features, static_features, "Train")
-    # shap_plot(train_shap)
+    # # Perform SHAP analysis for train, validation, and test sets
+    # dyn_features = train_dataset.dynamic_data.keys()
+    # static_features = train_dataset.static_data.keys()
+    # # train_shap = compute_shap(model, train_loader, device, dyn_features, static_features, "Train")
+    # # shap_plot(train_shap)
 
-    # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
-    # shap_plot(val_shap)
+    # # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
+    # # shap_plot(val_shap)
 
-    test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
-    shap_plot(test_shap)
+    # test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
+    # shap_plot(test_shap)
 
-    # Perform LIME analysis for train, validation, and test sets
-    # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
-    # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
-    # compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
+    # # Perform LIME analysis for train, validation, and test sets
+    # # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
+    # # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
+    # # compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
 
     
 
@@ -149,8 +148,8 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file)
 
 
-    split_patterns = ['spatial','temporal'] #'spatio_temporal', 'spatial_train_val'
-    model_types = ['Explanatory', 'Time_series', 'Mixed']
+    split_patterns = ['spatial','temporal', 'spatio_temporal', 'spatial_train_val']
+    model_types = [ 'Time_series', 'Explanatory', 'Mixed']
         
 
     # Disable Dask's GPU monitoring to prevent the NVMLError crash
@@ -163,16 +162,16 @@ if __name__ == "__main__":
     scratch_dir = "./dask_scratch" 
     
     # close any existing clients
-    try:
-        client = Client.current()
-        client.close()
-    except ValueError:
-        pass
+    # try:
+    #     client = Client.current()
+    #     client.close()
+    # except ValueError:
+    #     pass
     
-    cluster = LocalCluster(n_workers=8, threads_per_worker=1, memory_limit='8GB', local_directory=scratch_dir, scheduler_port=8786, dashboard_address=':8787', silence_logs=50)
+    # cluster = LocalCluster(n_workers=8, threads_per_worker=1, memory_limit='8GB', local_directory=scratch_dir, scheduler_port=8786, dashboard_address=':8787', silence_logs=50)
 
-    client = Client(cluster)
-    print(f"Dask Dashboard available at: {client.dashboard_link} \n")
+    # client = Client(cluster)
+    # print(f"Dask Dashboard available at: {client.dashboard_link} \n")
     
     for model_type in model_types:
         for split_pattern in split_patterns:
@@ -181,7 +180,7 @@ if __name__ == "__main__":
     
             main(config, split_pattern, model_type)
             break
-        break
+        # break
     
     
             # print(f"{model_type} Model run end time: {time.ctime()} \n")
@@ -191,9 +190,9 @@ if __name__ == "__main__":
     # emissions = tracker.stop()
     # print(emissions)
 
-    cluster.close()
+    # cluster.close()
     
-    client.close()
+    # client.close()
 
     
     

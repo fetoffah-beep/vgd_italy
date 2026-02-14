@@ -118,7 +118,7 @@ class VGDDataset(Dataset):
             print(f'No metadata found for {split_pattern}')
             return
 
-        # Apply your dtype and safety limit
+        # Apply dtype and safety limit
         self.metadata = self.metadata.astype({'mp_id':'int32',
                                               'easting':'int32', 
                                               'northing':'int32', 
@@ -203,52 +203,64 @@ class VGDDataset(Dataset):
             
         self.categorical_vars.append('month')
         self.static_data['mask'] = self.mask
+        self.dynamic_data['month'] = self.create_months_data()
+        
+        print('Opening the predictors ...................')
+        data = self.get_predictors(min_lon, max_lon, min_lat, max_lat, slice_data=True)
 
-        # Compute the num of features. These will be used to instantiate the model
-        if self.model_type == 'Time_series':
-            self.num_dynamic_features = 2
+        # # Compute the num of features. These will be used to instantiate the model
+        self.num_dynamic_features = len(self.dynamic_data)
+        self.num_static_features = len(self.static_data)
 
-            self.num_static_features = 1
 
-            self.dynamic_data['month'] = self.create_months_data()
 
-        else:
-            print('Opening the predictors ...................')
-            data = self.get_predictors(min_lon, max_lon, min_lat, max_lat, slice_data=True)
+
+        # print("Pre-loading patches into RAM...")
+        # if self.split=='training':
+        #     for var_name, ds in self.static_data.items():
+        #         ds.load()
+
+        #     for var_name, ds in self.dynamic_data.items():
+        #         if var_name in ['month', 'seismic_magnitude']:
+        #             continue
+        #         ds.load()
+
             
-            # print("Pre-loading patches into RAM...")
-            # if self.split=='training':
-            #     for var_name, ds in self.static_data.items():
-            #         ds.load()
-
-            #     for var_name, ds in self.dynamic_data.items():
-            #         if var_name in ['month', 'seismic_magnitude']:
-            #             continue
-            #         ds.load()
-
-            
             
 
-            if self.model_type == 'Explanatory':
-                self.num_dynamic_features = len(self.dynamic_data)
-            else:
-                self.num_dynamic_features = len(self.dynamic_data)+1 # for the displacement in the mixed model
 
-            self.num_static_features = len(self.static_data)
 
-            # # Convert the categorical values into indices for embedding during training
-            self.cat_indices = {}
-            # for var_name, categories in self.var_categories.items():
-            #     self.cat_indices[var_name] = {
-            #         str(category): idx 
-            #         for idx, category in enumerate(categories)
-            #     }
+        # # Convert the categorical values into indices for embedding during training
+        self.cat_indices = {}
+        for var_name, categories in self.var_categories.items():
+            self.cat_indices[var_name] = {
+                category: idx 
+                for idx, category in enumerate(categories)
+            }
             
-            # To do:
-            # find the nearest neighbor to each measurement point from the feature array using coordinates and store as indices, 
-            # This is feature dependent
-
-            self.station_indices, self.time_indices, self.displacement_indices = self._get_station_indices()
+            
+        for var in self.cat_indices:
+            if var in self.static_data:
+                end_ds = self.static_data[var]
+            elif var in self.dynamic_data:
+                end_ds = self.dynamic_data[var]
+                
+            temp_data = xr.full_like(end_ds, -1, dtype='uint8')
+            for raw_val, idx in self.cat_indices[var].items():
+                mask = (end_ds == raw_val)
+                temp_data = xr.where(mask, idx, temp_data)
+                
+            print(var, np.unique(temp_data[var].values))
+                
+            if var in self.static_data:
+                self.static_data[var] = temp_data
+            elif var in self.dynamic_data:
+                self.dynamic_data[var] = temp_data
+                
+                
+        # find the nearest neighbor to each measurement point from the feature array using coordinates and store as indices, 
+        # This is feature dependent
+        self.station_indices, self.time_indices = self._get_station_indices()
             
         # We now compute stats on the training data for data normalisation purposes        
         self.stats= self.compute_stats(self.metadata)
@@ -269,60 +281,22 @@ class VGDDataset(Dataset):
         print("Pre-computing indices for the coherent stations")
         indices = {}
         time_indices = {}
-        displacement_indices = {}
-
+        
         # For each variable, Find the nearest grid indices for each neighbor coordinate and store
         for variable_name in list(self.static_data.keys()) + list(self.dynamic_data.keys()):
             print(f"    {variable_name}")
-            if variable_name == 'seismic_magnitude':
-                continue
-            if variable_name == 'twsan':
+            if variable_name in ['seismic_magnitude', 'twsan']:
                 continue
             if variable_name in self.static_data:
                 ds = self.static_data[variable_name]
             elif variable_name in self.dynamic_data:
                 ds = self.dynamic_data[variable_name]
-                # Compute the temporal indices for each sample
-                ds_time = ds.coords['time'].values
-                t_idx = np.searchsorted(ds_time, self.data_time.values)
-                t_idx = np.clip(t_idx, 0, len(ds_time) - 1)
-                time_indices[variable_name] = t_idx.astype('int32')
-                
+                ds_times = ds.time.values
+                # find nearest time index to data_times (is of type datetime)
+                time_indices[variable_name] = np.array([np.argmin(np.abs(ds_times - np.datetime64(t))) for t in self.data_time])
 
-
-            else:
-                continue
-            
             grid_lon = ds.coords['longitude'].values
             grid_lat = ds.coords['latitude'].values
-
-            if variable_name =='mask':
-
-                y_off, x_off = np.meshgrid(np.arange(-2, 3), np.arange(-2, 3), indexing='ij')
-                offsets = np.stack([y_off.ravel(), x_off.ravel()], axis=1)
-
-    
-                coord_to_idx = {}
-                for i, row in self.metadata.iterrows():
-                    lon_idx = np.abs(grid_lon - row['lon']).argmin()
-                    lat_idx = np.abs(grid_lat - row['lat']).argmin()
-                    coord_to_idx[(lat_idx, lon_idx)] = i
-
-                station_neighbors = []
-                for i, row in self.metadata.iterrows():
-                    center_lon_idx = np.abs(grid_lon - row['lon']).argmin()
-                    center_lat_idx = np.abs(grid_lat - row['lat']).argmin()
-                    
-                    neighbor_ids = []
-                    for dy, dx in offsets:
-                        target_coord = (center_lat_idx + dy, center_lon_idx + dx)
-                        # Find which station is at this coordinate. 
-                        # If no station exists (invalid point), we use -1 as a padding flag.
-                        neighbor_ids.append(coord_to_idx.get(target_coord, -1))
-                    
-                    station_neighbors.append(neighbor_ids)
-
-                displacement_indices['displacement'] = np.array(station_neighbors)
 
             lon2d, lat2d = np.meshgrid(grid_lon, grid_lat)
             tree = KDTree(np.column_stack([lon2d.ravel(), lat2d.ravel()]))
@@ -335,7 +309,10 @@ class VGDDataset(Dataset):
                 mp_indices.append(np.stack([iy.astype('int32'), ix.astype('int32')], axis=1))
 
             indices[variable_name] = np.asarray(mp_indices)
-        return indices, time_indices, displacement_indices
+
+        return indices, time_indices
+
+       
     
     @profile
     def __getitem__(self, item_idx):
@@ -354,47 +331,53 @@ class VGDDataset(Dataset):
         # target = self.min_max_scale(target, self.stats['min']['target'], self.stats['max']['target'])
         sample['target'] = torch.tensor(target, dtype=torch.float32)
         
+        mask_ds = self.static_data['mask']
+        # Get the indices for the neighbours of this station using the precomputed station_indices
+        neighbor_indices = self.station_indices['mask'][idx]
+        mask_sample = mask_ds['mask'].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                        latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+        
+        # # Replace the raw code with the sequential index
+        # for raw_code, cat_idx in self.cat_indices['mask'].items():
+        #     mask_sample[mask_sample == int(raw_code)] = cat_idx
+        
+        sample['categorical_static']['mask'] = torch.tensor(mask_sample, dtype=torch.uint8)
+
+        month_ds = self.dynamic_data['month']
+        time_indices = self.time_indices['month'][time_idx : time_idx + self.seq_len]
+
+        month_sample = month_ds['month'].isel(
+            time=xr.DataArray(time_indices, dims="time"),
+            longitude=xr.DataArray(neighbor_indices[:, 1]),
+            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5) #.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
+        sample['categorical_dynamic']['month'] = torch.tensor(month_sample, dtype=torch.uint8)
+
+        
         if self.model_type in ['Time_series', 'Mixed']:
-            mask_ds = self.static_data['mask']
-            # Get the indices for the neighbours of this station using the precomputed station_indices
-            neighbor_indices = self.station_indices['mask'][idx]
-            mask_sample = mask_ds['mask'].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
-            
-            # # Replace the raw code with the sequential index
-            # for raw_code, cat_idx in self.cat_indices['mask'].items():
-            #     mask_sample[mask_sample == int(raw_code)] = cat_idx
+            # displacement
+            variable_name ='displacement'
+            ds = self.dynamic_data[variable_name]
+            neighbor_indices = self.station_indices[variable_name][idx]
 
-            month_ds = self.dynamic_data['month']
-            time_indices = self.time_indices['month'][time_idx : time_idx + self.seq_len]
-
-            month_sample = month_ds.isel(
+            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
+            sampled = ds[variable_name].isel(
                 time=xr.DataArray(time_indices, dims="time"),
                 longitude=xr.DataArray(neighbor_indices[:, 1]),
-                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5) #.sel(time=xr.DataArray(data_times, dims="time"), method="nearest")
-            
-            
-            # for raw_code, cat_idx in self.cat_indices['month'].items():
-            #     month_sample[month_sample == int(raw_code)] = cat_idx
+                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
+                
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = 0
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+
 
             
-            displacement_idx = self.displacement_indices[idx]
-    
-            # Prepare an empty tensor for the 5x5 patch: (Seq_Len, 25)
-            displacemnt_history = torch.zeros((self.seq_len, 25), dtype=torch.float32)
+
             
-            for i, n_id in enumerate(displacement_idx):
-                if n_id != -1:
-                    series = self.targets[n_id, time_idx : time_idx + self.seq_len]
-                    displacemnt_history[:, i] = torch.tensor((series - self.stats['displacement']['mean']) / self.stats['displacement']['std'])         
-
-            if self.model_type == 'Time_series':
-                sample['categorical_static']['mask'] = torch.tensor(mask_sample, dtype=torch.uint8)
-                sample['categorical_dynamic']['month'] = torch.tensor(month_sample, dtype=torch.uint8)
-                sample['continuos_dynamic']['displacement'] = torch.tensor(displacemnt_history, dtype=torch.flaot32)
-            elif self.model_type == 'Mixed':
-                sample['continuos_dynamic']['displacement'] = torch.tensor(displacemnt_history, dtype=torch.flaot32)
-
+         
 
         if self.model_type in ['Explanatory', 'Mixed']:
 
@@ -406,7 +389,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -424,7 +407,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -441,7 +424,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -458,7 +441,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -475,7 +458,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -493,7 +476,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # for raw_code, cat_idx in self.cat_indices[variable_name].items():
             #     sampled[sampled == int(raw_code)] = cat_idx
@@ -506,7 +489,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # for raw_code, cat_idx in self.cat_indices[variable_name].items():
             #     sampled[sampled == int(raw_code)] = cat_idx
@@ -520,7 +503,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -541,7 +524,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # for raw_code, cat_idx in self.cat_indices[variable_name].items():
             #     sampled[sampled == int(raw_code)] = cat_idx
@@ -553,7 +536,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -571,7 +554,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -589,7 +572,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -607,7 +590,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -625,7 +608,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # for raw_code, cat_idx in self.cat_indices[variable_name].items():
             #     sampled[sampled == int(raw_code)] = cat_idx
@@ -638,7 +621,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -656,7 +639,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -674,7 +657,7 @@ class VGDDataset(Dataset):
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
             sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(5, 5)
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
             # Replace NaNs with the mean value of the variable
             nan_mask = ~np.isfinite(sampled)
@@ -799,19 +782,7 @@ class VGDDataset(Dataset):
             sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
-            # month
-            variable_name='month'
-            ds = self.dynamic_data[variable_name]
-            time_indices = self.time_indices[variable_name][time_idx : time_idx + self.seq_len]                    
-            sampled = ds.isel(
-                time=xr.DataArray(time_indices, dims="time"),
-                longitude=xr.DataArray(neighbor_indices[:, 1]),
-                latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
-                   
-            # for raw_code, cat_idx in self.cat_indices[variable_name].items():
-            #     sampled[sampled == int(raw_code)] = cat_idx
-            sample['categorical_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.uint8)
-
+            
 
 
             # Get the predictors
@@ -887,12 +858,16 @@ class VGDDataset(Dataset):
             #             sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
                             
                             # sampled = self.min_max_scale(sampled, self.stats[variable_name]['min'], self.stats[variable_name]['max'])
-                            
-        cont_static_tensor = torch.stack(list(sample['continuos_static'].values()),dim=0)
+
+        
         cont_dynamic_tensor = torch.stack(list(sample['continuos_dynamic'].values()),dim=0)
         cat_static_tensor = torch.stack(list(sample['categorical_static'].values()),dim=0)
         cat_dynamic_tensor = torch.stack(list(sample['categorical_dynamic'].values()),dim=0)
-        
+        if self.model_type not in ['Time_series']:                  
+            cont_static_tensor = torch.stack(list(sample['continuos_static'].values()),dim=0)
+        else:
+            cont_static_tensor = torch.empty(0)
+            
         return {"static_cont": cont_static_tensor,              
                 "dynamic_cont": cont_dynamic_tensor,
                 "static_cat": cat_static_tensor,              
@@ -920,97 +895,127 @@ class VGDDataset(Dataset):
                 time_chunk = 180
         else:
             time_chunk = -1
-
-        for file in os.listdir(os.path.join(self.data_dir)):
-            variable_name = file.split('.')[0]
-
-            if variable_name in self.static_data or variable_name in self.dynamic_data:
-                continue
-            print(f'    {variable_name}')
+        if self.model_type in ['Time_series', 'Mixed']:
+            # rasterise the EGMS data (self.targets, self.mask and self.metadata)
             
-            if file.endswith('.csv') and variable_name=='seismic_magnitude':
-                seismic_ds = csv2xarray(os.path.join(self.data_dir, file))
-                
-                mask = (
-                    (seismic_ds.longitude >= min_lon) & 
-                    (seismic_ds.longitude <= max_lon) & 
-                    (seismic_ds.latitude >= min_lat) & 
-                    (seismic_ds.latitude <= max_lat)
-                )
+            # using the extent and coordinate of points from the mask layer
+            grid_lon = self.mask.longitude.values
+            grid_lat = self.mask.latitude.values
+            raster_targets = np.full((self.targets.shape[1], len(grid_lat), len(grid_lon)), np.nan, dtype='float32')
+            
+            
+            # 3. Map Point Coordinates to Grid Indices
+            # We find the nearest pixel for each EGMS point
+            lat_indices = np.array([np.abs(grid_lat - lon).argmin() for lon in self.metadata['lat'].values])
+            lon_indices = np.array([np.abs(grid_lon - lat).argmin() for lat in self.metadata['lon'].values])
 
-                # Apply the mask to the 'point' dimension
-                seismic_ds = seismic_ds.isel(point=mask)
-                seismic_ds = seismic_ds.chunk({"time": time_chunk, "point": 256}) 
+            for i in range(len(self.metadata)):
+                iy, ix = lat_indices[i], lon_indices[i]
+                raster_targets[:, iy, ix] = self.targets[i, :]
                 
-                nc_points = np.column_stack([seismic_ds['longitude'].values, seismic_ds['latitude'].values])
-                
-                self.seismic_tree = cKDTree(nc_points)
-                self.dynamic_data[variable_name] = seismic_ds
-            else:
-                if file.endswith('.tif'):
-                    engine='rasterio'
-                elif file.endswith('.nc'):
-                    engine = 'h5netcdf'
-                else:
+            ds_displacement = xr.Dataset(
+                {
+                    "displacement": (("time", "latitude", "longitude"), raster_targets),
+                },
+                coords={
+                    "time": self.data_time,
+                    "latitude": grid_lat,
+                    "longitude": grid_lon
+                }
+            )
+            self.dynamic_data['displacement'] = ds_displacement.chunk({"time": time_chunk, "latitude": 256, "longitude": 256})
+            
+        if self.model_type in ['Explanatory', 'Mixed']:
+            
+        
+        
+
+            for file in os.listdir(os.path.join(self.data_dir)):
+                variable_name = file.split('.')[0]
+
+                if variable_name in self.static_data or variable_name in self.dynamic_data:
                     continue
-
-                data_ds = xr.open_dataset(os.path.join(self.data_dir, file), engine=engine, chunks={"time": -1, "latitude": 256, "longitude": 256})
+                print(f'    {variable_name}')
                 
-                if 'ssm_noise' in data_ds:
-                    data_ds = data_ds.drop_vars('ssm_noise')
-                
-                for old_var in ['band_data', 'Band1']:
-                    if old_var in data_ds.data_vars:
-                        data_ds = data_ds.rename({old_var: variable_name})
+                if file.endswith('.csv') and variable_name=='seismic_magnitude':
+                    seismic_ds = csv2xarray(os.path.join(self.data_dir, file))
+                    
+                    mask = (
+                        (seismic_ds.longitude >= min_lon) & 
+                        (seismic_ds.longitude <= max_lon) & 
+                        (seismic_ds.latitude >= min_lat) & 
+                        (seismic_ds.latitude <= max_lat)
+                    )
 
-                # Rename the dimensions for uniformity                        
-                rename_dict = {'x': 'longitude', 'y': 'latitude', 'lon': 'longitude', 'lat': 'latitude', 'band':'time'}
-                data_ds = data_ds.rename({k: v for k, v in rename_dict.items() if k in data_ds.dims})
-
-                # if time is not in the dimension, add it
-                if 'time' not in data_ds.dims:
-                    data_ds = data_ds.expand_dims('time')
-
-                # Temperature, precipitation and drought code have time from 2017/01/01 to the last available date according to the band number
-                if variable_name in ['temperature', 'precipitation', 'drought_code']:
-                    data_ds['time'] = pd.date_range('2017-01-01', periods=data_ds.sizes['time'], freq='D')
-
-                is_descending = data_ds.latitude[0] > data_ds.latitude[1]
-                if is_descending:
-                    data_ds = data_ds.sel(longitude=slice(min_lon, max_lon), latitude=slice(max_lat, min_lat)) 
+                    # Apply the mask to the 'point' dimension
+                    seismic_ds = seismic_ds.isel(point=mask)
+                    seismic_ds = seismic_ds.chunk({"time": time_chunk, "point": 256}) 
+                    
+                    nc_points = np.column_stack([seismic_ds['longitude'].values, seismic_ds['latitude'].values])
+                    
+                    self.seismic_tree = cKDTree(nc_points)
+                    self.dynamic_data[variable_name] = seismic_ds
                 else:
-                    data_ds = data_ds.sel(longitude=slice(min_lon, max_lon), latitude=slice(min_lat, max_lat)) 
-                
+                    if file.endswith('.tif'):
+                        engine='rasterio'
+                    elif file.endswith('.nc'):
+                        engine = 'h5netcdf'
+                    else:
+                        continue
 
-                if variable_name in self.categorical_vars:
-                    variable_cat = da.unique(data_ds[variable_name].drop_vars("time", errors="ignore").data).compute()
-                    self.var_categories[variable_name] = da.nan_to_num(variable_cat, nan=0).astype("uint8")
-                    # variable_cat = data_ds[variable_name].drop_vars('time', errors='ignore').stack(pixel=['latitude', 'longitude']).dropna('pixel')
-                    # variable_cat = np.unique(variable_cat).astype('uint8')
-                    # self.var_categories[variable_name] = variable_cat
-                    data_ds = data_ds.astype('uint8')
-                else:
-                    data_ds = data_ds.astype('float32')
+                    data_ds = xr.open_dataset(os.path.join(self.data_dir, file), engine=engine, chunks={"time": -1, "latitude": 256, "longitude": 256})
+                    
+                    if 'ssm_noise' in data_ds:
+                        data_ds = data_ds.drop_vars('ssm_noise')
+                    
+                    for old_var in ['band_data', 'Band1']:
+                        if old_var in data_ds.data_vars:
+                            data_ds = data_ds.rename({old_var: variable_name})
 
-                # To keep the chunking consistent with the dimension order of the file, we do this
-                data_chunk = {}
-                for dim in list(data_ds.dims):
-                    if dim == 'time':
-                        data_chunk[dim] = time_chunk
-                    elif dim in ['latitude', 'longitude']:
-                        data_chunk[dim] = 1024
-                data_ds = data_ds.chunk(data_chunk)
+                    # Rename the dimensions for uniformity                        
+                    rename_dict = {'x': 'longitude', 'y': 'latitude', 'lon': 'longitude', 'lat': 'latitude', 'band':'time'}
+                    data_ds = data_ds.rename({k: v for k, v in rename_dict.items() if k in data_ds.dims})
 
-                
+                    # if time is not in the dimension, add it
+                    if 'time' not in data_ds.dims:
+                        data_ds = data_ds.expand_dims('time')
 
-                if len(data_ds.time) > 1:
-                    self.dynamic_data[variable_name] = data_ds
-                    # Add time(month) as dynamic variable:
-                    if 'time' in data_ds.dims and 'month' not in self.dynamic_data:
-                        self.dynamic_data['month'] = self.create_months_data()
-                        
-                else:
-                    self.static_data[variable_name] = data_ds
+                    # # Temperature, precipitation and drought code have time from 2017/01/01 to the last available date according to the band number
+                    # if variable_name in ['temperature', 'precipitation', 'drought_code']:
+                    #     data_ds['time'] = pd.date_range('2017-01-01', periods=data_ds.sizes['time'], freq='D')
+
+                    is_descending = data_ds.latitude[0] > data_ds.latitude[1]
+                    if is_descending:
+                        data_ds = data_ds.sel(longitude=slice(min_lon, max_lon), latitude=slice(max_lat, min_lat)) 
+                    else:
+                        data_ds = data_ds.sel(longitude=slice(min_lon, max_lon), latitude=slice(min_lat, max_lat)) 
+                    
+
+                    if variable_name in self.categorical_vars:
+                        variable_cat = da.unique(data_ds[variable_name].drop_vars("time", errors="ignore").data).compute()
+                        self.var_categories[variable_name] = da.nan_to_num(variable_cat, nan=0).astype("uint8")
+                        data_ds = data_ds.astype('uint8')
+                    else:
+                        data_ds = data_ds.astype('float32')
+
+                    # To keep the chunking consistent with the dimension order of the file, we do this
+                    data_chunk = {}
+                    for dim in list(data_ds.dims):
+                        if dim == 'time':
+                            data_chunk[dim] = time_chunk
+                        elif dim in ['latitude', 'longitude']:
+                            data_chunk[dim] = 256
+                    data_ds = data_ds.chunk(data_chunk)
+
+                    
+
+                    if len(data_ds.time) > 1:
+                        self.dynamic_data[variable_name] = data_ds
+                        # Add time(month) as dynamic variable:
+                        if 'time' in data_ds.dims and 'month' not in self.dynamic_data:
+                            self.dynamic_data['month'] = self.create_months_data()    
+                    else:
+                        self.static_data[variable_name] = data_ds
 
     @profile
     def create_months_data(self):
@@ -1021,6 +1026,7 @@ class VGDDataset(Dataset):
             month_values = ds.time.dt.month.astype('uint8')
             self.var_categories['month'] = np.unique(month_values)
             month_values = month_values.broadcast_like(ds['ssm'])
+            month_values = month_values.to_dataset(name='month')
             
             return month_values.chunk({
                 "time": -1, 
@@ -1154,7 +1160,7 @@ class VGDDataset(Dataset):
             
             # Save updated config
             with open(config_path, "w") as f:
-               yaml.dump(config, f, sort_keys=False)
+                yaml.dump(config, f, sort_keys=False)
             
         else:
             # For validation or test splits, we use the statistics computed on the training split
@@ -1227,172 +1233,167 @@ class VGDDataset(Dataset):
 
 
 
-        
-        # return {'all': self.metadata.mp_id,
-        #         'f{self.split}_set_mps':  mp_ids
-        #         }
-
  
-#     def _decompose_(self, data):
-#         '''
-#         Source:
-#             https://machinelearningmastery.com/decompose-time-series-data-trend-seasonality/
-#             https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.seasonal_decompose.html
-#             https://www.geeksforgeeks.org/seasonality-detection-in-time-series-data/
-#             https://otexts.com/fpp3/
+# #     def _decompose_(self, data):
+# #         '''
+# #         Source:
+# #             https://machinelearningmastery.com/decompose-time-series-data-trend-seasonality/
+# #             https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.seasonal_decompose.html
+# #             https://www.geeksforgeeks.org/seasonality-detection-in-time-series-data/
+# #             https://otexts.com/fpp3/
             
-#             residual:
-#                 https://www.nature.com/articles/s41598-021-96674-0
-#                 https://openaccess.thecvf.com/content/CVPR2024W/EarthVision/papers/Ebel_Implicit_Assimilation_of_Sparse_In_Situ_Data_for_Dense__CVPRW_2024_paper.pdf
+# #             residual:
+# #                 https://www.nature.com/articles/s41598-021-96674-0
+# #                 https://openaccess.thecvf.com/content/CVPR2024W/EarthVision/papers/Ebel_Implicit_Assimilation_of_Sparse_In_Situ_Data_for_Dense__CVPRW_2024_paper.pdf
             
-#             Lag:
-#                 https://www.geeksforgeeks.org/what-is-lag-in-time-series-forecasting/
+# #             Lag:
+# #                 https://www.geeksforgeeks.org/what-is-lag-in-time-series-forecasting/
 
 
-#         Parameters
-#         ----------
-#         data : TYPE
-#             DESCRIPTION.
+# #         Parameters
+# #         ----------
+# #         data : TYPE
+# #             DESCRIPTION.
 
-#         Returns
-#         -------
-#         trend, seasonal, residual
+# #         Returns
+# #         -------
+# #         trend, seasonal, residual
 
-#         '''
+# #         '''
 
-#         if data.ndim > 1:
-#             num_time = data.shape[0]
-#             num_vars = data.shape[1]
-#             height = data.shape[2]
-#             width = data.shape[3]
-#             trend = np.empty_like(data)
-#             seasonal = np.empty_like(data)
-#             residual = np.empty_like(data)
+# #         if data.ndim > 1:
+# #             num_time = data.shape[0]
+# #             num_vars = data.shape[1]
+# #             height = data.shape[2]
+# #             width = data.shape[3]
+# #             trend = np.empty_like(data)
+# #             seasonal = np.empty_like(data)
+# #             residual = np.empty_like(data)
 
-#             for var_idx in range(num_vars):
-#                 for h_idx in range(height):
-#                     for w_idx in range(width):
-#                         decomposition_additive = seasonal_decompose(data[:, var_idx, h_idx, w_idx], model='additive', period=61,
-#                                                                             extrapolate_trend='freq')
-#                         trend[:, var_idx, h_idx, w_idx] = decomposition_additive.trend
-#                         seasonal[:, var_idx, h_idx, w_idx] = decomposition_additive.seasonal
-#                         residual[:, var_idx, h_idx, w_idx] = decomposition_additive.resid
-#         else:  # 1-dimensional target data
-#             decomposition_additive = seasonal_decompose(data, model='additive', period=61, extrapolate_trend='freq')
-#             trend = decomposition_additive.trend
-#             seasonal = decomposition_additive.seasonal
-#             residual = decomposition_additive.resid
-#         return trend, seasonal, residual
-
-
+# #             for var_idx in range(num_vars):
+# #                 for h_idx in range(height):
+# #                     for w_idx in range(width):
+# #                         decomposition_additive = seasonal_decompose(data[:, var_idx, h_idx, w_idx], model='additive', period=61,
+# #                                                                             extrapolate_trend='freq')
+# #                         trend[:, var_idx, h_idx, w_idx] = decomposition_additive.trend
+# #                         seasonal[:, var_idx, h_idx, w_idx] = decomposition_additive.seasonal
+# #                         residual[:, var_idx, h_idx, w_idx] = decomposition_additive.resid
+# #         else:  # 1-dimensional target data
+# #             decomposition_additive = seasonal_decompose(data, model='additive', period=61, extrapolate_trend='freq')
+# #             trend = decomposition_additive.trend
+# #             seasonal = decomposition_additive.seasonal
+# #             residual = decomposition_additive.resid
+# #         return trend, seasonal, residual
 
 
-#  static_files = sorted([os.path.join(self.data_dir, "static", f) for f in os.listdir(os.path.join(self.data_dir, "static")) if f.endswith(".nc")])
-#     dynamic_files = sorted([os.path.join(self.data_dir, "dynamic", f) for f in os.listdir(os.path.join(self.data_dir, "dynamic")) if f.endswith(".nc")])
+
+
+# #  static_files = sorted([os.path.join(self.data_dir, "static", f) for f in os.listdir(os.path.join(self.data_dir, "static")) if f.endswith(".nc")])
+# #     dynamic_files = sorted([os.path.join(self.data_dir, "dynamic", f) for f in os.listdir(os.path.join(self.data_dir, "dynamic")) if f.endswith(".nc")])
     
 
-#     # Load the static netcdf files
-#     for f in static_files:
-#         with xr.open_dataset(f, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
-#             ds = ds.chunk(10000)
-#             # Transform the metadata coordinates to the CRS of the dataset if needed
-#             if not ds.rio.crs:
-#                 ds = ds.rio.write_crs("EPSG:4326")
+# #     # Load the static netcdf files
+# #     for f in static_files:
+# #         with xr.open_dataset(f, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
+# #             ds = ds.chunk(10000)
+# #             # Transform the metadata coordinates to the CRS of the dataset if needed
+# #             if not ds.rio.crs:
+# #                 ds = ds.rio.write_crs("EPSG:4326")
             
-#             # Sample for the data points in the metadata file at a go
-#             var = list(ds.data_vars.keys())[0]
+# #             # Sample for the data points in the metadata file at a go
+# #             var = list(ds.data_vars.keys())[0]
 
-#             if var in categorical_vars:
-#                 stats['mean']['static'][var] = 'None'
-#                 continue
-
-            
-#             lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
-#             lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
-#             if lat_name is None or lon_name is None:
-#                 raise ValueError(f"Could not find latitude/longitude coordinates in dataset {f}. Have only {list(ds.coords.keys())}")
-            
-#             sampled = ds[var].interp(
-#                     {lat_name: xr.DataArray(metadata["lat"], dims="points"),
-#                     lon_name: xr.DataArray(metadata["lon"], dims="points")}
-#                 )
-            
-#             sampled = sampled.astype("float32")
-
-
-#             # compute stats for the current variable
-#             var_mean = float(sampled.mean(skipna=True))
-#             var_std  = float(sampled.std(skipna=True))
-#             var_min  = float(sampled.min(skipna=True))
-#             var_max  = float(sampled.max(skipna=True))
-            
-#             stats['mean']['static'][var] = var_mean
-#             stats['std']['static'][var] = var_std
-#             stats['min']['static'][var] = var_min
-#             stats['max']['static'][var] = var_max
-#             print(f'Static variable {var} stats: \n    mean={var_mean}, std={var_std}, min={var_min}, max={var_max}')
+# #             if var in categorical_vars:
+# #                 stats['mean']['static'][var] = 'None'
+# #                 continue
 
             
-#     for f in dynamic_files:
-#         with xr.open_dataset(f, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
-#             # Transform the metadata coordinates to the CRS of the dataset if needed
-#             if not ds.rio.crs:
-#                 ds = ds.rio.write_crs("EPSG:4326")
-#             transformer = Transformer.from_crs("EPSG:3035", ds.rio.crs, always_xy=True)
-#             metadata[['lon', 'lat']] = metadata.apply(lambda row: pd.Series(transformer.transform(row['easting'], row['northing'])), axis=1)
-#             # Sample for the data points in the metadata file
-#             var = list(ds.data_vars.keys())[0] 
+# #             lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+# #             lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+# #             if lat_name is None or lon_name is None:
+# #                 raise ValueError(f"Could not find latitude/longitude coordinates in dataset {f}. Have only {list(ds.coords.keys())}")
+            
+# #             sampled = ds[var].interp(
+# #                     {lat_name: xr.DataArray(metadata["lat"], dims="points"),
+# #                     lon_name: xr.DataArray(metadata["lon"], dims="points")}
+# #                 )
+            
+# #             sampled = sampled.astype("float32")
 
-#             if var == 'seismic_magnitude':
+
+# #             # compute stats for the current variable
+# #             var_mean = float(sampled.mean(skipna=True))
+# #             var_std  = float(sampled.std(skipna=True))
+# #             var_min  = float(sampled.min(skipna=True))
+# #             var_max  = float(sampled.max(skipna=True))
+            
+# #             stats['mean']['static'][var] = var_mean
+# #             stats['std']['static'][var] = var_std
+# #             stats['min']['static'][var] = var_min
+# #             stats['max']['static'][var] = var_max
+# #             print(f'Static variable {var} stats: \n    mean={var_mean}, std={var_std}, min={var_min}, max={var_max}')
+
+            
+# #     for f in dynamic_files:
+# #         with xr.open_dataset(f, engine="netcdf4", drop_variables=["ssm_noise", "spatial_ref", "band", "crs"]) as ds:
+# #             # Transform the metadata coordinates to the CRS of the dataset if needed
+# #             if not ds.rio.crs:
+# #                 ds = ds.rio.write_crs("EPSG:4326")
+# #             transformer = Transformer.from_crs("EPSG:3035", ds.rio.crs, always_xy=True)
+# #             metadata[['lon', 'lat']] = metadata.apply(lambda row: pd.Series(transformer.transform(row['easting'], row['northing'])), axis=1)
+# #             # Sample for the data points in the metadata file
+# #             var = list(ds.data_vars.keys())[0] 
+
+# #             if var == 'seismic_magnitude':
                 
-#                     # Use KDTree to map metadata points to nearest NetCDF points
-#                 nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
-#                 metadata_points = np.column_stack([metadata['lon'], metadata['lat']])
-#                 tree = cKDTree(nc_points)
-#                 distances, indices = tree.query(metadata_points)
+# #                     # Use KDTree to map metadata points to nearest NetCDF points
+# #                 nc_points = np.column_stack([ds['lon'].values, ds['lat'].values])
+# #                 metadata_points = np.column_stack([metadata['lon'], metadata['lat']])
+# #                 tree = cKDTree(nc_points)
+# #                 distances, indices = tree.query(metadata_points)
 
-#                 # Sample variable using nearest points
-#                 sampled = ds[var].isel(point=xr.DataArray(indices, dims="points"))
+# #                 # Sample variable using nearest points
+# #                 sampled = ds[var].isel(point=xr.DataArray(indices, dims="points"))
             
-#             else:
-#                 lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
-#                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
+# #             else:
+# #                 lat_name = next((c for c in ds.coords if c.lower() in self.coord_names['y']), None)
+# #                 lon_name = next((c for c in ds.coords if c.lower() in self.coord_names['x']), None)
 
-#                 if lat_name is None or lon_name is None:
-#                     raise ValueError(f"Could not find latitude/longitude coordinates in dataset {f}. Have only {list(ds.coords.keys())}")
+# #                 if lat_name is None or lon_name is None:
+# #                     raise ValueError(f"Could not find latitude/longitude coordinates in dataset {f}. Have only {list(ds.coords.keys())}")
                 
-#                 sampled = ds[var].interp(
-#                     {lat_name: xr.DataArray(metadata["lat"], dims="points"),
-#                     lon_name: xr.DataArray(metadata["lon"], dims="points")}
-#                 )
+# #                 sampled = ds[var].interp(
+# #                     {lat_name: xr.DataArray(metadata["lat"], dims="points"),
+# #                     lon_name: xr.DataArray(metadata["lon"], dims="points")}
+# #                 )
             
-#             sampled = sampled.astype("float32")
+# #             sampled = sampled.astype("float32")
             
 
-#             # compute stats for the current variable
-#             var_mean = float(sampled.mean(skipna=True))
-#             var_std  = float(sampled.std(skipna=True))
-#             var_min  = float(sampled.min(skipna=True))
-#             var_max  = float(sampled.max(skipna=True))
+# #             # compute stats for the current variable
+# #             var_mean = float(sampled.mean(skipna=True))
+# #             var_std  = float(sampled.std(skipna=True))
+# #             var_min  = float(sampled.min(skipna=True))
+# #             var_max  = float(sampled.max(skipna=True))
 
-#             stats['mean']['dynamic'][var] = var_mean
-#             stats['std']['dynamic'][var] = var_std
-#             stats['min']['dynamic'][var] = var_min
-#             stats['max']['dynamic'][var] = var_max
-#             print(f'Dynamic variable {var} stats: \n    mean={var_mean}, std={var_std}, min={var_min}, max={var_max}')  
+# #             stats['mean']['dynamic'][var] = var_mean
+# #             stats['std']['dynamic'][var] = var_std
+# #             stats['min']['dynamic'][var] = var_min
+# #             stats['max']['dynamic'][var] = var_max
+# #             print(f'Dynamic variable {var} stats: \n    mean={var_mean}, std={var_std}, min={var_min}, max={var_max}')  
 
-#     # 🔹 Save stats to config.yaml
-#     with open(config_path, "r") as config_file:
-#         config = yaml.safe_load(config_file) 
-#     config["data"]['stats'] = stats  
+# #     # 🔹 Save stats to config.yaml
+# #     with open(config_path, "r") as config_file:
+# #         config = yaml.safe_load(config_file) 
+# #     config["data"]['stats'] = stats  
     
-#     # Save updated config
-#     with open("config.yaml", "w") as f:
-#        yaml.dump(config, f, sort_keys=False)
+# #     # Save updated config
+# #     with open("config.yaml", "w") as f:
+# #        yaml.dump(config, f, sort_keys=False)
     
-# else:
-#     print(f'Using the provided training set transformation parameters for the {self.split} set')
-#     with open(config_path, "r") as f:
-#         config = yaml.safe_load(f)
-#         stats = config["data"]['stats']
-# return stats
+# # else:
+# #     print(f'Using the provided training set transformation parameters for the {self.split} set')
+# #     with open(config_path, "r") as f:
+# #         config = yaml.safe_load(f)
+# #         stats = config["data"]['stats']
+# # return stats

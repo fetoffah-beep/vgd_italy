@@ -4,8 +4,8 @@ import pandas as pd
 import os
 
 # Define the paths
-input_dir = r"./"
-output_dir = r"./processed_data"
+input_dir = r"C:\Users\gmfet\Desktop\data"
+output_dir = r"C:\Users\gmfet\Desktop\data\processed_data"
 os.makedirs(output_dir, exist_ok=True)
 
 variables_config = {
@@ -60,7 +60,8 @@ def process_variable(var_name, config, is_dynamic=False):
         if "y" in ds.dims: rename_map["y"] = "latitude"
         if "lon" in ds.dims: rename_map["lon"] = "longitude"
         if "lat" in ds.dims: rename_map["lat"] = "latitude"
-        if "band" in ds.dims: rename_map["band"] = "time"        
+        if "band" in ds.dims: rename_map["band"] = "time" 
+        if "Band1" in ds: rename_map["Band1"] = "ksat"        
         ds = ds.rename(rename_map)
         
         
@@ -81,7 +82,7 @@ def process_variable(var_name, config, is_dynamic=False):
             
         )
     
-        ds = ds.chunk({'time': -1, 'latitude': 256, 'longitude': 256})
+        # ds = ds.chunk({'time': -1, 'latitude': 256, 'longitude': 256})
         
         ds.attrs.update(data_attrs)
         ds = ds.astype(target_dtype)
@@ -113,10 +114,10 @@ def process_variable(var_name, config, is_dynamic=False):
         print(f"Error processing {var_name}: {e}")
 
 
-print('converting tif to netcdf ....')
-for var, cfg in variables_config['static'].items():
-    print(f' {var}\n')
-    process_variable(var, cfg, is_dynamic=False)
+# print('converting tif to netcdf ....')
+# for var, cfg in variables_config['static'].items():
+#     print(f' {var}\n')
+#     process_variable(var, cfg, is_dynamic=False)
 
 for var, cfg in variables_config['dynamic'].items():
     print(f' {var}\n')

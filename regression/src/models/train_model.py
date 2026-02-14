@@ -324,7 +324,7 @@ def train_model(model, train_loader, val_loader, optimizer, learning_rate, confi
     
             # scheduler.step()
 
-    plot_losses(training_losses, validation_losses)
+    # plot_losses(training_losses, validation_losses)
     
     # print(summary(model, input_size=[dyn_inputs.shape,static_input.shape]))
 
