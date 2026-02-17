@@ -106,14 +106,14 @@ class VGDDataset(Dataset):
             # "Use all metadata points" - combine all three files
             print(f"Combining and transforming all metadata for {split_pattern} split to EPSG 4326'")
             files = ["train_metadata.csv", "validation_metadata.csv", "test_metadata.csv"]
-            self.metadata = pd.concat([pd.read_csv(os.path.join(base_path, f), engine='pyarrow') for f in files])[:100]
+            self.metadata = pd.concat([pd.read_csv(os.path.join(base_path, f), engine='pyarrow') for f in files])[:10000]
             
         elif split_pattern in ['spatial', 'spatio_temporal', 'spatial_train_val']:
             # "Use according to split" - only load the file matching self.split
-            print(f"Reading metadata for {split_pattern} split and transforming {self.split} metadata to EPSG 4326'")
+            print(f"Reading metadata for {split_pattern} split and transforming {self.split} metadata to EPSG 4326")
             path = os.path.join(base_path, f"{self.split}_metadata.csv")
             print(f"Loading {self.split} metadata from {path}")
-            self.metadata = pd.read_csv(path, engine='pyarrow')[:100]
+            self.metadata = pd.read_csv(path, engine='pyarrow')[:10000]
         else:
             print(f'No metadata found for {split_pattern}')
             return
@@ -245,18 +245,17 @@ class VGDDataset(Dataset):
             elif var in self.dynamic_data:
                 end_ds = self.dynamic_data[var]
                 
-            temp_data = xr.full_like(end_ds, -1, dtype='uint8')
+            temp_data = xr.full_like(end_ds, -1, dtype='int8')
             for raw_val, idx in self.cat_indices[var].items():
                 mask = (end_ds == raw_val)
                 temp_data = xr.where(mask, idx, temp_data)
                 
-            print(var, np.unique(temp_data[var].values))
                 
             if var in self.static_data:
-                self.static_data[var] = temp_data
+                self.static_data[var] = temp_data.astype('uint8')
             elif var in self.dynamic_data:
-                self.dynamic_data[var] = temp_data
-                
+                self.dynamic_data[var] = temp_data.astype('uint8')
+        
                 
         # find the nearest neighbor to each measurement point from the feature array using coordinates and store as indices, 
         # This is feature dependent
@@ -285,7 +284,7 @@ class VGDDataset(Dataset):
         # For each variable, Find the nearest grid indices for each neighbor coordinate and store
         for variable_name in list(self.static_data.keys()) + list(self.dynamic_data.keys()):
             print(f"    {variable_name}")
-            if variable_name in ['seismic_magnitude', 'twsan']:
+            if variable_name in ['seismic_magnitude']:
                 continue
             if variable_name in self.static_data:
                 ds = self.static_data[variable_name]
@@ -419,7 +418,7 @@ class VGDDataset(Dataset):
             sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
             
             # dem
-            variable_name = 'clay_content'
+            variable_name = 'dem'
             ds = self.static_data[variable_name]
             # Get the indices for the neighbours of this station using the precomputed station_indices
             neighbor_indices = self.station_indices[variable_name][idx]
@@ -613,7 +612,25 @@ class VGDDataset(Dataset):
             # for raw_code, cat_idx in self.cat_indices[variable_name].items():
             #     sampled[sampled == int(raw_code)] = cat_idx
             sample['categorical_static'][variable_name]= torch.tensor(sampled, dtype=torch.uint8)
+            
+            # topo_wetness_index
+            variable_name = 'topo_wetness_index'
+            ds = self.static_data[variable_name]
+            # Get the indices for the neighbours of this station using the precomputed station_indices
+            neighbor_indices = self.station_indices[variable_name][idx]
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).to_numpy().reshape(-1, 5, 5)
 
+            # Replace NaNs with the mean value of the variable
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
+
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+
+            sample['continuos_static'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            
+            
 
             # vol_water_content_at_-33_kPa
             variable_name = 'vol_water_content_at_-33_kPa'
@@ -725,21 +742,21 @@ class VGDDataset(Dataset):
             sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
-            # # twsan
-            # variable_name ='twsan'
-            # ds = self.dynamic_data[variable_name]
-            # neighbor_indices = self.station_indices[variable_name][idx]
+            # twsan
+            variable_name ='twsan'
+            ds = self.dynamic_data[variable_name]
+            neighbor_indices = self.station_indices[variable_name][idx]
                     
-            # sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
-            #                                 latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
+            sampled = ds[variable_name].isel(longitude=xr.DataArray(neighbor_indices[:, 1]),
+                                            latitude=xr.DataArray(neighbor_indices[:, 0])).sel(time=xr.DataArray(data_times, dims="time"), method="nearest").to_numpy().reshape(-1, 5, 5)
                 
-            # nan_mask = ~np.isfinite(sampled)
-            # if np.any(nan_mask):
-            #     sampled[nan_mask] = self.stats[variable_name]['mean']
+            nan_mask = ~np.isfinite(sampled)
+            if np.any(nan_mask):
+                sampled[nan_mask] = self.stats[variable_name]['mean']
 
-            # sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
+            sampled = (sampled - self.stats[variable_name]['mean']) / self.stats[variable_name]['std']
 
-            # sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
+            sample['continuos_dynamic'][variable_name] = torch.tensor(sampled, dtype=torch.float32)
 
 
             # ssm

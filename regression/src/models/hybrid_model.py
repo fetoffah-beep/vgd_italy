@@ -60,8 +60,6 @@ class VGDModel(nn.Module):
         self.kernel_size = (3,3)
         self.num_layers= len(hidden_size)
         
-        self.num_dyn_features = dyn_feat
-
         cat_info = cat_info
         
         # If we’re in a hurry, one rule of thumb is to use the fourth root of the total number of unique 
@@ -153,10 +151,7 @@ class VGDModel(nn.Module):
             
         """
         batch_size, time_frame, _, _, _ = continous_dynamic_input.size()
-        # Continuous dynamic
-        continous_dynamic_input = continous_dynamic_input.permute(0, 2, 1, 3, 4)
         
-
         ################# CNN for static features #################
         if continous_static_input.numel() != 0:
              static_embedded = [continous_static_input]
@@ -168,10 +163,10 @@ class VGDModel(nn.Module):
         for i, (varname, embedding) in enumerate(self.embeddings.items()):
             if varname != 'month':
                 indices = categorical_static_input[:, cat_static_idx].long()
-                embedded = embedding(indices).permute(0, 1, 4, 2, 3)
+                embedded = embedding(indices).permute(0, 4, 1, 2, 3)
                 static_embedded.append(embedded)
                 cat_static_idx += 1
-        input_static = torch.cat(static_embedded, dim=2).squeeze(1)
+        input_static = torch.cat(static_embedded, dim=1).squeeze(2)
         cnn_output = self.static_model(input_static)
         # static2dyn = cnn_output.unsqueeze(1).repeat(1, time_frame, 1, 1, 1)
 
@@ -179,11 +174,11 @@ class VGDModel(nn.Module):
         # ################# ConvLSTM for Dynamic features #################
         dynamic_embedded = [continous_dynamic_input]
         month_indices = categorical_dynamic_input[:, 0].long()
-        dyn_embedded = self.embeddings['month'](month_indices)
+        dyn_embedded = self.embeddings['month'](month_indices).permute(0, 4, 1, 2, 3)
         dynamic_embedded.append(dyn_embedded)
         # raw_cat_channel = categorical_dynamic_input.permute(0, 2, 1, 3, 4) 
         # dynamic_embedded.append(raw_cat_channel)
-        input_dynamic = torch.cat(dynamic_embedded, dim=2)
+        input_dynamic = torch.cat(dynamic_embedded, dim=1).permute(0, 2, 1, 3, 4)
         dynamic_out_layers, _ = self.dynamic_model(input_dynamic)
         convlstm_output = dynamic_out_layers[-1]
 

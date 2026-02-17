@@ -65,7 +65,7 @@ def main(config, split_pattern, model_type):
 
 
     # Initialize the model
-    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.var_categories, hidden_size, output_size)
+    model = VGDModel(num_dynamic_features, num_static_features, train_dataset.cat_indices, hidden_size, output_size)
 
     model_optimizer = torch.optim.Adam(
                         model.parameters(),
@@ -87,58 +87,71 @@ def main(config, split_pattern, model_type):
     
     
     # Train the model
-    # train_model(
-    #     model,
-    #     train_loader,
-    #     val_loader,
-    #     optimizer,
-    #     learning_rate,
-    #     config,
-    #     start_epoch=start_epoch,
-    #     num_epochs=num_epochs,
-    #     checkpoint_path=checkpoint_path,
-    # )
+    train_model(
+        model,
+        train_loader,
+        val_loader,
+        optimizer,
+        learning_rate,
+        config,
+        start_epoch=start_epoch,
+        num_epochs=num_epochs,
+        checkpoint_path=checkpoint_path,
+    )
     
     
-    # # Test/Evaluate the model
-    # print("Training complete. Evaluating the model on the test set.")
+    # Test/Evaluate the model
+    print("Training complete. Evaluating the model on the test set.")
     
-    # results = evaluate_model(model, test_loader, 'config.yaml', device=device)
-    # predictions, ground_truth, residuals = (
-    #     results["predictions"],
-    #     results["ground_truth"],
-    #     results["residuals"],
-    # )
+    results = evaluate_model(model, test_loader, 'config.yaml', device=device)
+    predictions, ground_truth, residuals = (
+        results["predictions"],
+        results["ground_truth"],
+        results["residuals"],
+    )
 
-    # # Compute and display statistics
-    # pred_stats = get_summary_stats(predictions)
-    # gt_stats = get_summary_stats(ground_truth)
-    # res_stats = get_summary_stats(residuals)
+    # Compute and display statistics
+    pred_stats = get_summary_stats(predictions)
+    gt_stats = get_summary_stats(ground_truth)
+    res_stats = get_summary_stats(residuals)
 
-    # print("\n=== Model Evaluation Summary ===")
-    # display_summary_stats(pred_stats, label="Predictions")
-    # display_summary_stats(gt_stats, label="Ground Truth")
-    # display_summary_stats(res_stats, label="Residuals")
+    print("\n=== Model Evaluation Summary ===")
+    display_summary_stats(pred_stats, label="Predictions")
+    display_summary_stats(gt_stats, label="Ground Truth")
+    display_summary_stats(res_stats, label="Residuals")
 
-    # # Visualize results
-    # plot_results(ground_truth, predictions, residuals)
+    # Visualize results
+    plot_results(ground_truth, predictions, residuals)
+    
+    if model_type != 'Time_series':
 
-    # # Perform SHAP analysis for train, validation, and test sets
-    # dyn_features = train_dataset.dynamic_data.keys()
-    # static_features = train_dataset.static_data.keys()
-    # # train_shap = compute_shap(model, train_loader, device, dyn_features, static_features, "Train")
-    # # shap_plot(train_shap)
-
-    # # val_shap = compute_shap(model, val_loader, device, dyn_features, static_features, "Validation")
-    # # shap_plot(val_shap)
-
-    # test_shap = compute_shap(model, test_loader, device, dyn_features, static_features, "Test")
-    # shap_plot(test_shap)
-
-    # # Perform LIME analysis for train, validation, and test sets
-    # # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
-    # # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
-    # # compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
+        # Perform SHAP analysis for train, validation, and test sets
+        
+        dyn_features = train_dataset.dynamic_data.keys()
+        static_features = train_dataset.static_data.keys()
+        
+        predictor_variables = {
+                            "dyn_cont":  [v for v in dyn_features if v not in train_dataset.categorical_vars],
+                            "stat_cont": [v for v in static_features if v not in train_dataset.categorical_vars],
+                            "dyn_cat":   [v for v in dyn_features if v in train_dataset.categorical_vars],
+                            "stat_cat":  [v for v in static_features if v in train_dataset.categorical_vars],
+                        }
+        
+        
+        
+        # train_shap = compute_shap(model, train_loader, device, predictor_variables, "Train")
+        # shap_plot(train_shap)
+    
+        # val_shap = compute_shap(model, val_loader, device, predictor_variables, "Validation")
+        # shap_plot(val_shap)
+    
+        test_shap = compute_shap(model, test_loader, device, predictor_variables, "Test")
+        shap_plot(test_shap)
+    
+        # # Perform LIME analysis for train, validation, and test sets
+        # # compute_lime(model, train_loader, device, dyn_features, static_features, "Train")
+        # # compute_lime(model, val_loader, device, dyn_features, static_features, "Validation")
+        # # compute_lime(model, test_loader, device, dyn_features, static_features, "Test")
 
     
 
@@ -149,7 +162,7 @@ if __name__ == "__main__":
 
 
     split_patterns = ['spatial','temporal', 'spatio_temporal', 'spatial_train_val']
-    model_types = [ 'Time_series', 'Explanatory', 'Mixed']
+    model_types = ['Explanatory', 'Time_series', 'Mixed'] 
         
 
     # Disable Dask's GPU monitoring to prevent the NVMLError crash

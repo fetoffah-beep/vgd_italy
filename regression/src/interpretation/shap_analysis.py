@@ -25,7 +25,7 @@ profile = line_profiler.LineProfiler()
 time_start = time.time()
 
 @profile
-def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_name, explainer_type="deep"):
+def compute_shap(model, data_loader, device, pred_vars, dataset_name, explainer_type="deep"):
     """
     Compute and visualize SHAP values using different explainers.
 
@@ -67,32 +67,43 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
         dynamic_cont, static_cont, dynamic_cat, static_cat, targets = sample['dynamic_cont'], sample['static_cont'], sample['dynamic_cat'], sample['static_cat'], sample['target']
         dynamic_cont, static_cont, dynamic_cat, static_cat, targets = dynamic_cont.to(device), static_cont.to(device), dynamic_cat.to(device), static_cat.to(device), targets.to(device)
-        eastings, northings = sample['coords']
+        eastings = sample['coords'][0]
+        northings = sample['coords'][1]
 
         shap_values = explainer.shap_values([dynamic_cont, static_cont, dynamic_cat.float().requires_grad_(True), static_cat.float().requires_grad_(True)], check_additivity=False)
 
         
-        dyn_shap_values = shap_values[0]
-        stat_shap_values = shap_values[1]
+        cont_dyn_shap_values = shap_values[0]
+        cont_stat_shap_values = shap_values[1]
+        cat_dyn_shap_values = shap_values[2]
+        cat_stat_shap_values = shap_values[3]
         
             
-        for sample_idx in tqdm(range(len(dyn_shap_values))):
-            dyn_sample_shap = dyn_shap_values[sample_idx]
-            stat_sample_shap = stat_shap_values[sample_idx]
+        for shap_idx in tqdm(range(len(cont_dyn_shap_values))):
+            dyn_sample  = cont_dyn_shap_values[shap_idx]
+            stat_sample = cont_stat_shap_values[shap_idx]
+            dyn_cat_sample  = cat_dyn_shap_values[shap_idx]
+            stat_cat_sample = cat_stat_shap_values[shap_idx]
             
-            dyn_means = np.mean(dyn_sample_shap, axis=(0, 2, 3, 4))  # Average over time, height, width
-            stat_means = np.mean(stat_sample_shap, axis=(1, 2, 3))  # Average over height, width
-
-            dynamic_feature_dict = dict(zip(pred_vars, dyn_means))
-            static_feature_dict = dict(zip(pred_vars, stat_means))
-            # dynamic_feature_dict = {pred_vars[i]: dyn_means[i].item() for i in range(len(pred_vars))}
-            # static_feature_dict = {static_vars[i]: stat_means[i].item() for i in range(len(static_vars))}
-
-            feature_dict = {**dynamic_feature_dict, **static_feature_dict}
+            # Average over time, height, width, and output dim to have shap values per feature            
+            dyn_means = np.mean(dyn_sample, axis=(1,2,3,4))
+            stat_means = np.mean(stat_sample, axis=(1,2,3,4))
+            dyn_cat_means = np.mean(dyn_cat_sample, axis=(1,2,3,4))
+            stat_cat_means = np.mean(stat_cat_sample, axis=(1,2,3,4))
+            
+            
+            dynamic_feature_dict = dict(zip(pred_vars["dyn_cont"], dyn_means))
+            static_feature_dict  = dict(zip(pred_vars["stat_cont"], stat_means))
+            dynamic_cat_dict     = dict(zip(pred_vars["dyn_cat"], dyn_cat_means))
+            static_cat_dict      = dict(zip(pred_vars["stat_cat"], stat_cat_means))
+            
+            
+            
+            feature_dict = {**dynamic_feature_dict, **static_feature_dict, **dynamic_cat_dict, **static_cat_dict}
 
             shap_data.append({
-                'easting': eastings[sample_idx].item(),
-                'northing': northings[sample_idx].item(),
+                'easting': eastings[shap_idx].item(),
+                'northing': northings[shap_idx].item(),
                 **feature_dict,
             })
         #     break
@@ -118,7 +129,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
 
     # Iterate through features and create arrays
     for feature_name in feature_names:
-        feature_arrays[feature_name] = np.zeros((len(northings), len(eastings)))  # Initialize with zeros
+        feature_arrays[feature_name] = np.zeros((len(eastings), len(northings)))  # Initialize with zeros
 
     # Populate feature arrays
     for _, row in shap_df.iterrows():
@@ -126,7 +137,7 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
         northing_idx = np.where(northings == row.northing)[0][0]
 
         for feature_name in feature_names:
-            feature_arrays[feature_name][easting_idx, northing_idx,] = getattr(row, feature_name)
+            feature_arrays[feature_name][easting_idx, northing_idx] = row[feature_name]
 
     # Create xarray Dataset
     ds = xr.Dataset(
@@ -144,6 +155,30 @@ def compute_shap(model, data_loader, device, pred_vars, static_vars, dataset_nam
  
         
         
+
+# len(shap_values)
+# Out  [7]: 4
+
+# len(cont_dyn_shap_values)
+# Out  [8]: 8
+
+# len(cont_stat_shap_values)
+# Out  [9]: 8
+
+# len(cat_dyn_shap_values)
+# Out  [10]: 8
+
+# len(cat_stat_shap_values)
+# Out  [11]: 8
+
+# print("Dynamic cont:", cont_dyn_shap_values[0].shape)
+# print("Static cont :", cont_stat_shap_values[0].shape)
+# print("Dynamic cat:", cat_dyn_shap_values[0].shape)
+# print("Static cat :", cat_stat_shap_values[0].shape)
+# Dynamic cont: (6, 40, 5, 5, 1)
+# Static cont : (14, 1, 5, 5, 1)
+# Dynamic cat: (1, 40, 5, 5, 1)
+# Static cat : (5, 1, 5, 5, 1)
 
         
     #     # len(shap_values)               → 10  (Number of output features)
